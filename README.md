@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Sevia – Optimisation des ressources des plantations
 
 Architecture : **front React (Vue MVC)** ⇄ **API FastAPI (Contrôleurs + Services + Modèles)** ⇄ **PostgreSQL**, avec **ESP32** → **MQTT** → API.
@@ -51,3 +52,7 @@ Avant de coder, lire `docs/REPARTITION.md` (tâches de chacun).
 ## Pour avancer sur une fonctionnalité
 Branche → travailler uniquement dans le dossier `features/<nom>` de la fonctionnalité (service, routeur, puis page React) → test → pull request.
 Les `TODO` dans le code indiquent où continuer.
+=======
+# Smart-Realization
+Application web d'optimisation des ressources des plantations agricoles pour un développement durable
+>>>>>>> fd266c2e9b2664f198f0da1550391c01d3d418e0
