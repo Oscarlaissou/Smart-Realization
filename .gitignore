@@ -1,0 +1,10 @@
+.venv/
+__pycache__/
+node_modules/
+.env
+*.db
+dist/
+# Variables d'environnement et secrets
+.env
+.env.*
+!.env.example

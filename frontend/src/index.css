@@ -1,0 +1,7 @@
+:root{--vert:#1F7A4D;--fond:#F4F7F3;--encre:#12201A}
+body{margin:0;font-family:Inter,system-ui,sans-serif;background:var(--fond);color:var(--encre)}
+nav{width:220px;background:#0F2A1E;min-height:100vh;padding:16px;box-sizing:border-box}
+nav a{display:block;color:#A9C2B2;padding:10px 12px;border-radius:10px;text-decoration:none}
+nav a.active{background:#1B4A33;color:#fff}
+main{flex:1;padding:32px}
+.layout{display:flex}
