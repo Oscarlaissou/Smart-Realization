@@ -1,22 +1,47 @@
-from datetime import datetime
-from pydantic import BaseModel, EmailStr
-from ...core.base_schema import ORM
+from datetime import date
+from pydantic import BaseModel, Field, ConfigDict
 
-class ExploitationIn(BaseModel):
-    nom: str; localisation: str = ""
 
-class ExploitationOut(ORM, ExploitationIn):
+class EquipementOut(BaseModel):
+    """Représentation d'un équipement associé, renvoyée dans ParcelleOut.
+    Les alias camelCase matchent ce qu'attend le front (Parcelles.jsx)."""
+
     id: int
+    code: str
+    type: str
+    en_ligne: bool = Field(alias="enLigne")
 
-class CultureIn(BaseModel):
-    espece: str; date_semis: datetime | None = None
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
-class CultureOut(ORM, CultureIn):
+
+class ParcelleBase(BaseModel):
+    nom: str
+    culture: str | None = None
+    surface: float | None = None
+    date_semis: date | None = Field(default=None, alias="dateSemis")
+    type_sol: str | None = Field(default=None, alias="typeSol")
+
+    # populate_by_name=True : accepte aussi bien le nom python (date_semis)
+    # que l'alias camelCase (dateSemis) envoyé par le front.
+    model_config = ConfigDict(populate_by_name=True)
+
+
+class ParcelleCreate(ParcelleBase):
+    pass
+
+
+class ParcelleUpdate(ParcelleBase):
+    pass
+
+
+class ParcelleOut(ParcelleBase):
     id: int
+    equipements: list[EquipementOut] = []
 
-class ParcelleIn(BaseModel):
-    nom: str; surface_ha: float = 0; exploitation_id: int
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
-class ParcelleOut(ORM, ParcelleIn):
-    id: int; cultures: list[CultureOut] = []
 
+class AssocierEquipement(BaseModel):
+    equipement_id: int = Field(alias="equipementId")
+
+    model_config = ConfigDict(populate_by_name=True)
