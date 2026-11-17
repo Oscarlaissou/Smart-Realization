@@ -1,19 +1,72 @@
-// Toutes les requêtes vers le back passent par ici.
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+
+export function lireToken() {
+  return localStorage.getItem('token')
+}
+
+export function enregistrerSession(token, utilisateur) {
+  localStorage.setItem('token', token)
+  if (utilisateur) {
+    localStorage.setItem('utilisateur', JSON.stringify(utilisateur))
+  }
+}
+
+export function deconnexion() {
+  localStorage.removeItem('token')
+  localStorage.removeItem('utilisateur')
+}
 
 export async function api(chemin, options = {}) {
-  const token = localStorage.getItem('token')
-  const res = await fetch(BASE + chemin, {
-    ...options,
-    headers: { 'Content-Type': 'application/json', ...(token && { Authorization: `Bearer ${token}` }), ...options.headers },
-  })
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || res.statusText)
-  return res.status === 204 ? null : res.json()
+  const token = lireToken()
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 25000)
+
+  try {
+    const res = await fetch(`${API_URL}${chemin}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...options.headers,
+      },
+    })
+
+    if (res.status === 401 && !chemin.startsWith('/auth/')) {
+      deconnexion()
+      throw new Error('Session expirée, veuillez vous reconnecter.')
+    }
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.detail || `Erreur serveur (${res.status})`)
+    }
+
+    return res.status === 204 ? null : res.json()
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      throw new Error('Le serveur backend ne répond pas (vérifiez que FastAPI est lancé sur le port 8000).')
+    }
+    throw err
+  } finally {
+    clearTimeout(timeout)
+  }
 }
 
 export async function connexion(email, motDePasse) {
-  const corps = new URLSearchParams({ username: email, password: motDePasse })
-  const res = await fetch(BASE + '/auth/login', { method: 'POST', body: corps })
-  if (!res.ok) throw new Error('Identifiants incorrects')
-  localStorage.setItem('token', (await res.json()).access_token)
+  const data = await api('/auth/connexion', {
+    method: 'POST',
+    body: JSON.stringify({ email, mot_de_passe: motDePasse }),
+  })
+  enregistrerSession(data.access_token, data.utilisateur)
+  return data
+}
+
+export async function inscription(donnees) {
+  const data = await api('/auth/inscription', {
+    method: 'POST',
+    body: JSON.stringify(donnees),
+  })
+  enregistrerSession(data.access_token, data.utilisateur)
+  return data
 }

@@ -78,19 +78,20 @@ function Espace({ children }) {
     </div>
   )
 }
-
 export default function App() {
   return (
     <Routes>
       <Route path="/connexion" element={<Connexion />} />
       <Route path="/inscription" element={<Inscription />} />
       <Route path="/" element={<Espace><Dashboard /></Espace>} />
+      <Route path="/dashboard" element={<Navigate to="/" replace />} />
       <Route path="/parcelles" element={<Espace><Parcelles /></Espace>} />
       <Route path="/equipements" element={<Espace><Equipements /></Espace>} />
       <Route path="/humidite" element={<Espace><Humidite /></Espace>} />
       <Route path="/fertilisation" element={<Espace><Fertilisation /></Espace>} />
       <Route path="/camera" element={<Espace><Camera /></Espace>} />
       <Route path="/alertes" element={<Espace><Alertes /></Espace>} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   )
 }

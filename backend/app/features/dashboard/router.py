@@ -8,7 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from ...core.database import get_db
 from ...core.security import current_user
-from ..parcelles.models import Parcelle
+from ..parcelles.models import Parcelle, Culture
 from ..equipements.models import Equipement
 from ..humidite.models import Mesure, Irrigation
 from ..camera.models import Comptage
@@ -31,8 +31,8 @@ def _parcelles_filtrees(db: Session, parcelle: str | None, culture: str | None):
     q = db.query(Parcelle)
     if parcelle and parcelle != "Toutes les parcelles":
         q = q.filter(Parcelle.nom == parcelle)
-    if culture and culture != "Toutes les cultures" and hasattr(Parcelle, "culture"):
-        q = q.filter(Parcelle.culture == culture)
+    if culture and culture != "Toutes les cultures":
+        q = q.filter(Parcelle.cultures.any(Culture.espece == culture))
     parcelles = q.all()
     return parcelles, [p.id for p in parcelles]
 
@@ -110,7 +110,7 @@ def indicateurs(
         liste_parcelles.append({
             "id": p.id,
             "nom": p.nom,
-            "culture": getattr(p, "culture", "—") or "—",
+            "culture": ", ".join(c.espece for c in p.cultures) if p.cultures else "—",
             "statut": statut,
             "humidite": hum_p,
             "eau_m3": round(float(eau_p), 1),

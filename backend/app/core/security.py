@@ -1,33 +1,54 @@
-import hashlib, hmac, os, time
-import jwt
-from fastapi import Depends, HTTPException
-from fastapi.security import OAuth2PasswordBearer
+import os
+from datetime import datetime, timedelta
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jose import jwt, JWTError
+from passlib.context import CryptContext
 from sqlalchemy.orm import Session
-from .config import settings
 from .database import get_db
+from ..features.auth.models import User
 
-oauth2 = OAuth2PasswordBearer(tokenUrl="/auth/login")
+SECRET_KEY = os.getenv("SECRET_KEY", "sevia_cle_secrete_supabase_2026_fixe")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
 
-def hash_password(p: str) -> str:
-    salt = os.urandom(16)
-    h = hashlib.pbkdf2_hmac("sha256", p.encode(), salt, 200_000)
-    return salt.hex() + "$" + h.hex()
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+bearer_scheme = HTTPBearer(auto_error=False)
 
-def verify_password(p: str, stored: str) -> bool:
-    salt, h = stored.split("$")
-    c = hashlib.pbkdf2_hmac("sha256", p.encode(), bytes.fromhex(salt), 200_000)
-    return hmac.compare_digest(c.hex(), h)
 
-def create_token(user_id: int) -> str:
-    return jwt.encode({"sub": str(user_id), "exp": time.time() + 3600 * 8}, settings.SECRET_KEY, algorithm="HS256")
+def hacher_mot_de_passe(mot_de_passe: str) -> str:
+    return pwd_context.hash(mot_de_passe)
 
-def current_user(token: str = Depends(oauth2), db: Session = Depends(get_db)):
-    from ..features.auth.models import User
+
+
+
+def verifier_mot_de_passe(mot_de_passe: str, mot_de_passe_hash: str | None) -> bool:
+    if not mot_de_passe_hash:
+        return False
     try:
-        uid = int(jwt.decode(token, settings.SECRET_KEY, algorithms=["HS256"])["sub"])
+        return pwd_context.verify(mot_de_passe, mot_de_passe_hash)
     except Exception:
-        raise HTTPException(401, "Jeton invalide")
-    u = db.get(User, uid)
-    if not u:
-        raise HTTPException(401, "Utilisateur introuvable")
-    return u
+        return False
+
+def creer_token(user_id: int, email: str) -> str:
+    expiration = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    payload = {"sub": str(user_id), "email": email, "exp": expiration}
+    return jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: Session = Depends(get_db),
+) -> User:
+    if not credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Jeton manquant")
+    try:
+        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = int(payload.get("sub"))
+    except (JWTError, TypeError, ValueError):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Jeton invalide")
+
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Utilisateur introuvable")
+    return user
