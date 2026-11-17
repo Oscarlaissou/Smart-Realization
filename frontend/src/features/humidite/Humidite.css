@@ -1,0 +1,679 @@
+.hum-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+  
+  .hum-wrapper a:focus-visible,
+  .hum-wrapper button:focus-visible,
+  .hum-wrapper input:focus-visible,
+  .hum-wrapper select:focus-visible {
+    outline: 2px solid #1D6FB8;
+    outline-offset: 2px;
+  }
+  
+  /* En-tête */
+  .hum-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 4px;
+  }
+  
+  .hum-title {
+    margin: 0;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 30px;
+    letter-spacing: -0.02em;
+    font-weight: 700;
+  }
+  
+  .hum-subtitle {
+    margin: 4px 0 0;
+    font-size: 14px;
+    color: #5B6B63;
+  }
+  
+  .hum-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  
+  .hum-search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 44px;
+    box-sizing: border-box;
+    padding: 0 14px;
+    background: #FFFFFF;
+    border: 1px solid #D5DED7;
+    border-radius: 12px;
+  }
+  
+  .hum-search input {
+    border: 0;
+    outline: 0;
+    background: transparent;
+    font: inherit;
+    font-size: 14px;
+    width: 170px;
+    color: #12201A;
+  }
+  
+  .hum-lang {
+    height: 44px;
+    box-sizing: border-box;
+    padding: 0 14px;
+    border-radius: 12px;
+    border: 1px solid #D5DED7;
+    background: #FFFFFF;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #12201A;
+  }
+  
+  .hum-bell {
+    position: relative;
+    width: 44px;
+    height: 44px;
+    box-sizing: border-box;
+    border-radius: 12px;
+    border: 1px solid #D5DED7;
+    background: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+  }
+  
+  .hum-bell-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    min-width: 20px;
+    height: 20px;
+    box-sizing: border-box;
+    border-radius: 10px;
+    background: #B42318;
+    color: #FFFFFF;
+    font-size: 11px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #F4F7F3;
+  }
+  
+  .hum-user {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-left: 8px;
+  }
+  
+  .hum-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 22px;
+    background: #1F7A4D;
+    color: #FFFFFF;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 15px;
+    font-weight: 600;
+  }
+  
+  .hum-user-name {
+    font-size: 14px;
+    font-weight: 600;
+  }
+  
+  .hum-user-role {
+    font-size: 13px;
+    color: #5B6B63;
+  }
+  
+  /* Sélecteur de parcelles */
+  .hum-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .hum-pill {
+    height: 40px;
+    padding: 0 16px;
+    border-radius: 999px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 1px solid #D5DED7;
+    background: #FFFFFF;
+    color: #3C4A43;
+  }
+  
+  .hum-pill.active {
+    border-color: #12201A;
+    background: #12201A;
+    color: #FFFFFF;
+  }
+  
+  /* Cartes & Grilles */
+  .hum-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+  
+  .hum-card {
+    background: #FFFFFF;
+    border: 1px solid #E3E9E4;
+    border-radius: 16px;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    box-shadow: 0 1px 2px rgba(18, 32, 26, 0.04);
+    min-width: 0;
+  }
+  
+  .hum-card-gauge {
+    flex: 1 1 240px;
+  }
+  
+  .hum-card-chart {
+    flex: 2 1 360px;
+  }
+  
+  .hum-card-reco {
+    flex: 1.25 1 300px;
+  }
+  
+  .hum-card-cycles {
+    flex: 1 1 480px;
+  }
+  
+  .hum-card-journal {
+    flex: 1 1 620px;
+  }
+  
+  .hum-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  
+  .hum-card-title {
+    margin: 0;
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 20px;
+    letter-spacing: -0.01em;
+  }
+  
+  .hum-card-sub {
+    margin: 4px 0 0;
+    font-size: 13px;
+    color: #5B6B63;
+  }
+  
+  /* Jauge */
+  .hum-gauge-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  
+  .hum-gauge-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding-top: 12px;
+    border-top: 1px solid #E8EEE9;
+  }
+  
+  .hum-live-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: #E3F4EA;
+    color: #14683F;
+    white-space: nowrap;
+  }
+  
+  .hum-live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+    background: #14683F;
+  }
+  
+  .hum-target-text {
+    font-size: 13px;
+    color: #5B6B63;
+  }
+  
+  /* Légende graphique 24h */
+  .hum-legend {
+    display: flex;
+    gap: 18px;
+    font-size: 13px;
+    color: #5B6B63;
+    flex-wrap: wrap;
+  }
+  
+  .hum-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  
+  .hum-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 5px;
+    display: inline-block;
+  }
+  
+  /* Panneau Recommandations d'irrigation */
+  .hum-reco-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  
+  .hum-reco-badge.urgent {
+    background: #E1EEFA;
+    color: #17528A;
+  }
+  
+  .hum-reco-badge.optimal {
+    background: #E3F4EA;
+    color: #14683F;
+  }
+  
+  .hum-reco-badge.exces {
+    background: #FEF0D9;
+    color: #8A4A07;
+  }
+  
+  .hum-reco-hero {
+    background: #F4F7F3;
+    border: 1px solid #E3E9E4;
+    border-radius: 14px;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .hum-reco-hero.urgent {
+    background: #E1EEFA;
+    border-color: #C4DDF4;
+  }
+  
+  .hum-reco-volume-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #5B6B63;
+  }
+  
+  .hum-reco-hero.urgent .hum-reco-volume-label {
+    color: #17528A;
+  }
+  
+  .hum-reco-volume-val {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    margin-top: 2px;
+  }
+  
+  .hum-reco-volume-val strong {
+    font-family: 'Space Grotesk', sans-serif;
+    font-size: 32px;
+    font-weight: 700;
+    color: #12201A;
+  }
+  
+  .hum-reco-volume-val span {
+    font-size: 14px;
+    font-weight: 500;
+    color: #3C4A43;
+  }
+  
+  .hum-reco-metrics {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(18, 32, 26, 0.08);
+  }
+  
+  .hum-reco-metric-label {
+    font-size: 12px;
+    color: #5B6B63;
+  }
+  
+  .hum-reco-metric-val {
+    font-size: 14px;
+    font-weight: 600;
+    color: #12201A;
+    margin-top: 2px;
+  }
+  
+  .hum-reco-info-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .hum-reco-info-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: #F9FBF9;
+    border: 1px solid #EEF3EF;
+  }
+  
+  .hum-reco-info-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #12201A;
+  }
+  
+  .hum-reco-info-desc {
+    font-size: 13px;
+    line-height: 1.45;
+    color: #5B6B63;
+  }
+  
+  .hum-reco-advice {
+    font-size: 13px;
+    line-height: 1.5;
+    color: #12201A;
+    background: #E3F4EA;
+    border-radius: 12px;
+    padding: 12px 14px;
+  }
+  
+  /* Bilan hydrique dans le journal */
+  .hum-bilan-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: #F4F7F3;
+    border: 1px solid #E3E9E4;
+    font-size: 13px;
+    color: #3C4A43;
+  }
+  
+  .hum-bilan-strip strong {
+    color: #12201A;
+  }
+  
+  /* Boutons & Formulaires */
+  .hum-btn-green-sm {
+    height: 42px;
+    padding: 0 18px;
+    border-radius: 12px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: #1F7A4D;
+    color: #FFFFFF;
+    border: 0;
+  }
+  
+  .hum-btn-outline {
+    height: 40px;
+    padding: 0 18px;
+    border-radius: 12px;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: #FFFFFF;
+    color: #12201A;
+    border: 1px solid #7E8F85;
+  }
+  
+  .hum-btn-outline:hover {
+    background: #F4F7F3;
+  }
+  
+  .hum-grid-2 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px;
+  }
+  
+  .hum-grid-4 {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 16px;
+  }
+  
+  .hum-field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+  }
+  
+  .hum-field label {
+    font-size: 13px;
+    font-weight: 500;
+  }
+  
+  .hum-field input,
+  .hum-field select {
+    height: 44px;
+    box-sizing: border-box;
+    padding: 0 12px;
+    border: 1px solid #7E8F85;
+    border-radius: 12px;
+    background: #FFFFFF;
+    font: inherit;
+    font-size: 15px;
+    color: #12201A;
+    width: 100%;
+  }
+  
+  /* Tableaux */
+  .hum-table-wrap {
+    overflow-x: auto;
+  }
+  
+  .hum-table {
+    width: 100%;
+    min-width: 520px;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  
+  .hum-table th {
+    text-align: left;
+    color: #5B6B63;
+    font-size: 13px;
+    padding: 10px 12px;
+    font-weight: 500;
+    border-bottom: 1px solid #E3E9E4;
+  }
+  
+  .hum-table td {
+    padding: 14px 12px;
+    border-bottom: 1px solid #EEF3EF;
+  }
+  
+  .hum-td-bold {
+    font-weight: 600;
+  }
+  
+  .hum-check-label {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  
+  .hum-check-label input {
+    width: 18px;
+    height: 18px;
+    accent-color: #1F7A4D;
+    margin: 0;
+  }
+  
+  .hum-new-cycle {
+    border-top: 1px solid #E8EEE9;
+    padding-top: 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  
+  .hum-badge-auto {
+    display: inline-flex;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: #E1EEFA;
+    color: #17528A;
+    white-space: nowrap;
+  }
+  
+  .hum-badge-manuel {
+    display: inline-flex;
+    align-items: center;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: #EEF3EF;
+    color: #3C4A43;
+    white-space: nowrap;
+  }
+  
+  .hum-banner-info {
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: #E1EEFA;
+    color: #17528A;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  
+  .hum-banner-error {
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: #FDE8E4;
+    color: #9A2C1E;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  
+  /* Pagination */
+  .hum-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding-top: 14px;
+    border-top: 1px solid #E8EEE9;
+    font-size: 13px;
+    color: #5B6B63;
+  }
+  
+  .hum-page-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  
+  .hum-page-btn {
+    height: 36px;
+    min-width: 36px;
+    padding: 0 12px;
+    border-radius: 10px;
+    border: 1px solid #D5DED7;
+    background: #FFFFFF;
+    color: #12201A;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  .hum-page-btn:hover:not(:disabled) {
+    background: #F4F7F3;
+  }
+  
+  .hum-page-btn.active {
+    background: #12201A;
+    border-color: #12201A;
+    color: #FFFFFF;
+  }
+  
+  .hum-page-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  
+  .hum-btn-icon-del {
+    border: 0;
+    background: transparent;
+    color: #9A2C1E;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 8px;
+  }
+  
+  .hum-btn-icon-del:hover {
+    background: #FDE8E4;
+  }
