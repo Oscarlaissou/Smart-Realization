@@ -271,6 +271,10 @@ export default function Parcelles() {
                       <tr key={p.id} className="parcelles-row">
                         <td style={{ padding: "14px 8px", fontWeight: 600 }}>
                           {p.nom}
+                          {/* Utile pour configurer le vrai capteur (ESP32) avec le bon id de parcelle */}
+                          <span style={{ display: "block", fontWeight: 400, fontSize: 12, color: "#8A9790" }}>
+                            ID parcelle : {p.id}
+                          </span>
                           <span style={{ display: "block", fontWeight: 400, fontSize: 13, color: "#5B6B63" }}>
                             {p.culture}
                           </span>
