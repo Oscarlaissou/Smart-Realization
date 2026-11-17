@@ -7,4 +7,4 @@ class EquipementIn(BaseModel):
 
 class EquipementOut(ORM, EquipementIn):
     id: int; en_ligne: bool
-
+    derniere_donnee: datetime | None = None
