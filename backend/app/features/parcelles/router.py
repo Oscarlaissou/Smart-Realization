@@ -2,8 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ...core.database import get_db
+from ...core.security import current_user
+from ..auth.models import User
 from ..equipements.models import Equipement
-from .models import Parcelle
+from .models import Parcelle, Exploitation
 from .schemas import ParcelleOut, ParcelleCreate, ParcelleUpdate, AssocierEquipement, EquipementOut
 
 router = APIRouter(prefix="/parcelles", tags=["parcelles"])
@@ -13,9 +15,25 @@ def _equipements_de(db: Session, parcelle_id: int) -> list[Equipement]:
     return db.query(Equipement).filter(Equipement.parcelle_id == parcelle_id).all()
 
 
+def _exploitation_de(db: Session, user: User) -> Exploitation:
+    exploitation = db.query(Exploitation).filter(Exploitation.user_id == user.id).first()
+    if not exploitation:
+        raise HTTPException(
+            status_code=400,
+            detail="Aucune exploitation associée à ce compte.",
+        )
+    return exploitation
+
+
 @router.get("", response_model=list[ParcelleOut])
-def lister_parcelles(db: Session = Depends(get_db)):
-    parcelles = db.query(Parcelle).order_by(Parcelle.id).all()
+def lister_parcelles(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    exploitation = _exploitation_de(db, user)
+    parcelles = (
+        db.query(Parcelle)
+        .filter(Parcelle.exploitation_id == exploitation.id)
+        .order_by(Parcelle.id)
+        .all()
+    )
     equipements = db.query(Equipement).filter(Equipement.parcelle_id.isnot(None)).all()
 
     par_parcelle: dict[int, list[Equipement]] = {}
@@ -48,8 +66,13 @@ def obtenir_parcelle(parcelle_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("", response_model=ParcelleOut, status_code=201)
-def creer_parcelle(payload: ParcelleCreate, db: Session = Depends(get_db)):
-    parcelle = Parcelle(**payload.model_dump())
+def creer_parcelle(
+    payload: ParcelleCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    exploitation = _exploitation_de(db, user)
+    parcelle = Parcelle(**payload.model_dump(), exploitation_id=exploitation.id)
     db.add(parcelle)
     db.commit()
     db.refresh(parcelle)

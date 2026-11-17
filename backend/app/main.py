@@ -11,8 +11,7 @@ from .features.alertes import router as alertes
 from .features.fertilisation import router as fertilisation
 from .features.camera import router as camera
 from .features.dashboard import router as dashboard
-from app.features.parcelles.router import router as parcelles_router
-app.include_router(parcelles_router)
+
 
 app = FastAPI(title="Sevia API", version="0.1.0")
 
