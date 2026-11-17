@@ -1,0 +1,166 @@
+/* ParcellesPage.css
+   Styles qui ne peuvent pas se faire proprement en inline (survol, focus...).
+   Les couleurs reprennent la charte du mockup Sevia. */
+
+   .parcelles-row {
+    background: #ffffff;
+    transition: background 0.15s ease;
+  }
+  .parcelles-row:nth-child(odd) {
+    background: #f1f7f3;
+  }
+  .parcelles-row:hover {
+    background: #e9f3ed;
+  }
+  
+  .badge {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+  }
+  .badge-ok {
+    background: #e3f4ea;
+    color: #14683f;
+  }
+  .badge-warn {
+    background: #fdf0dc;
+    color: #8a4a07;
+  }
+  
+  .btn {
+    height: 42px;
+    padding: 0 18px;
+    border-radius: 12px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    border: 0;
+    font-family: inherit;
+  }
+  .btn-primary {
+    background: #1f7a4d;
+    color: #ffffff;
+  }
+  .btn-primary:hover {
+    background: #18603c;
+  }
+  .btn-secondary {
+    background: #ffffff;
+    color: #12201a;
+    border: 1px solid #7e8f85;
+  }
+  .btn-secondary:hover {
+    background: #f4f7f3;
+  }
+  .btn-danger {
+    background: #ffffff;
+    color: #9a2c1e;
+    border: 1px solid #9a2c1e;
+  }
+  .btn-danger:hover {
+    background: #fbeceb;
+  }
+  .btn-link {
+    background: transparent;
+    color: #1f7a4d;
+    font-weight: 600;
+    font-size: 14px;
+    border: 0;
+    cursor: pointer;
+    padding: 0;
+  }
+  
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .field label {
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .field input,
+  .field select {
+    height: 46px;
+    box-sizing: border-box;
+    padding: 0 12px;
+    border: 1px solid #7e8f85;
+    border-radius: 12px;
+    background: #ffffff;
+    font: inherit;
+    font-size: 15px;
+    color: #12201a;
+  }
+  
+  /* Puce "équipement associé" avec croix de suppression au survol */
+  .equip-chip {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 28px 6px 12px;
+    border: 1px solid #d5ded7;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 500;
+    background: #ffffff;
+  }
+  .equip-chip .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 4px;
+    background: #1f7a4d;
+  }
+  .equip-chip .dot.offline {
+    background: #b42318;
+  }
+  .equip-chip .remove {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 0;
+    background: transparent;
+    color: #9a2c1e;
+    font-size: 13px;
+    line-height: 1;
+    cursor: pointer;
+    display: none;
+    align-items: center;
+    justify-content: center;
+  }
+  .equip-chip:hover .remove {
+    display: flex;
+  }
+  .equip-chip:hover {
+    background: #fbeceb;
+    border-color: #e3b3ab;
+  }
+  
+  .conn-banner {
+    font-size: 13px;
+    font-weight: 600;
+    padding: 8px 14px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .conn-ok {
+    background: #e3f4ea;
+    color: #14683f;
+  }
+  .conn-erreur {
+    background: #fbeceb;
+    color: #9a2c1e;
+  }
+  .conn-chargement {
+    background: #eef3ef;
+    color: #5b6b63;
+  }
+  
