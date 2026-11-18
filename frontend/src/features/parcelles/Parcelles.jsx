@@ -7,6 +7,8 @@ import {
   creerExploitation,
   creerParcelle,
   listerEquipements,
+  associerEquipement,
+  dissocierEquipement,
   listerExploitations,
   listerParcelles,
   modifierCulture,
@@ -195,6 +197,22 @@ export default function Parcelles() {
       await modifierCulture(cultureId, donnees)
       await charger(parcelleSelectionnee.id)
     }, t('parcelles.succesModification'))
+  }
+
+  const associerUnEquipement = (equipementId) => {
+    if (!parcelleSelectionnee) return
+    executer(async () => {
+      await associerEquipement(parcelleSelectionnee.id, equipementId)
+      await charger(parcelleSelectionnee.id)
+    }, t('parcelles.succesEquipement'))
+  }
+
+  const dissocierUnEquipement = (equipementId) => {
+    if (!parcelleSelectionnee) return
+    executer(async () => {
+      await dissocierEquipement(parcelleSelectionnee.id, equipementId)
+      await charger(parcelleSelectionnee.id)
+    }, t('parcelles.succesEquipement'))
   }
 
   const supprimerUneCulture = (cultureId) => {
@@ -535,6 +553,8 @@ export default function Parcelles() {
               onAjouterCulture={ajouterUneCulture}
               onModifierCulture={modifierUneCulture}
               onSupprimerCulture={supprimerUneCulture}
+              onAssocierEquipement={associerUnEquipement}
+              onDissocierEquipement={dissocierUnEquipement}
             />
           ) : (
             <section className="carte parcelle-fiche">

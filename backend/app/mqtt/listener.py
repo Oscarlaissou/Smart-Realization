@@ -1,10 +1,12 @@
 import json
 import uuid
+from datetime import datetime
 import paho.mqtt.client as mqtt
 from ..core.config import settings
 from ..core.database import SessionLocal
 from ..features.parcelles.models import Parcelle
 from ..features.humidite.models import MesureHumidite
+from ..features.equipements.models import Equipement
 
 _client = None
 
@@ -69,6 +71,14 @@ def on_message(client, userdata, msg):
             return
 
         db.add(MesureHumidite(parcelle_id=parcelle_id, valeur=valeur))
+        # Capteurs de la parcelle marqués « vivants » (statut en ligne, voir equipements/router.py).
+        # Le payload ne dit pas quel capteur a envoyé la mesure : on met à jour tous ceux de la parcelle.
+        for capteur in (
+            db.query(Equipement)
+            .filter(Equipement.parcelle_id == parcelle_id, Equipement.type == "capteur")
+            .all()
+        ):
+            capteur.derniere_donnee = datetime.utcnow()
         db.commit()
         print(f"[MQTT] Enregistré : {parcelle.nom} (#{parcelle_id}) -> {valeur} %", flush=True)
 

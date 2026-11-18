@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, Field, field_validator
 from ...core.base_schema import ORM
 
@@ -19,3 +21,4 @@ class EquipementIn(BaseModel):
 
 class EquipementOut(ORM, EquipementIn):
     id: int
+    derniere_donnee: datetime | None = None   # rempli par le listener MQTT (capteurs)

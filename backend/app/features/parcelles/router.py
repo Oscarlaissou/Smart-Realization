@@ -5,8 +5,12 @@ from sqlalchemy.orm import Session
 from ...core.database import get_db
 from ...core.security import current_user
 from .models import Exploitation, Parcelle, Culture
+from ..equipements.models import Equipement
+from ..equipements.router import statut_en_ligne
 from .schemas import (
+    AssocierEquipement,
     CultureIn,
+    EquipementResume,
     CultureOut,
     ExploitationIn,
     ExploitationOut,
@@ -67,6 +71,38 @@ def _supprimer_dependances_parcelle(db: Session, parcelle_id: int) -> None:
         {Equipement.parcelle_id: None}, synchronize_session=False
     )
     db.query(Culture).filter(Culture.parcelle_id == parcelle_id).delete(synchronize_session=False)
+
+
+def _ids_exploitations(db: Session, user) -> list[int]:
+    return [e.id for e in db.query(Exploitation.id).filter(Exploitation.user_id == user.id).all()]
+
+
+def _resume(e: Equipement) -> EquipementResume:
+    return EquipementResume(id=e.id, code=e.code, type=e.type, en_ligne=statut_en_ligne(e))
+
+
+def _sortie(db: Session, parcelle: Parcelle) -> ParcelleOut:
+    """ParcelleOut + équipements associés (pas de relationship SQLAlchemy vers Equipement)."""
+    out = ParcelleOut.model_validate(parcelle)
+    out.equipements = [
+        _resume(e)
+        for e in db.query(Equipement).filter(Equipement.parcelle_id == parcelle.id).order_by(Equipement.id)
+    ]
+    return out
+
+
+def _sorties(db: Session, parcelles: list[Parcelle]) -> list[ParcelleOut]:
+    ids = [p.id for p in parcelles]
+    par_parcelle: dict[int, list[Equipement]] = {}
+    if ids:
+        for e in db.query(Equipement).filter(Equipement.parcelle_id.in_(ids)).order_by(Equipement.id):
+            par_parcelle.setdefault(e.parcelle_id, []).append(e)
+    resultats = []
+    for p in parcelles:
+        out = ParcelleOut.model_validate(p)
+        out.equipements = [_resume(e) for e in par_parcelle.get(p.id, [])]
+        resultats.append(out)
+    return resultats
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +179,7 @@ def lister_parcelles(
     )
     if exploitation_id is not None:
         requete = requete.filter(Parcelle.exploitation_id == exploitation_id)
-    return requete.order_by(Parcelle.id.asc()).all()
+    return _sorties(db, requete.order_by(Parcelle.id.asc()).all())
 
 
 @router.post("/parcelles", response_model=ParcelleOut, status_code=201)
@@ -157,12 +193,12 @@ def creer_parcelle(
     db.add(parcelle)
     db.commit()
     db.refresh(parcelle)
-    return parcelle
+    return _sortie(db, parcelle)
 
 
 @router.get("/parcelles/{pid}", response_model=ParcelleOut)
 def lire_parcelle(pid: int, db: Session = Depends(get_db), user=Depends(current_user)):
-    return _parcelle_du_user(db, pid, user)
+    return _sortie(db, _parcelle_du_user(db, pid, user))
 
 
 @router.put("/parcelles/{pid}", response_model=ParcelleOut)
@@ -174,11 +210,12 @@ def modifier_parcelle(
 ):
     parcelle = _parcelle_du_user(db, pid, user)
     _exploitation_du_user(db, donnees.exploitation_id, user)
-    for cle, valeur in donnees.model_dump().items():
+    # exclude_unset : un champ non envoyé (ex. seuils réglés depuis la page Humidité) n'est pas effacé
+    for cle, valeur in donnees.model_dump(exclude_unset=True).items():
         setattr(parcelle, cle, valeur)
     db.commit()
     db.refresh(parcelle)
-    return parcelle
+    return _sortie(db, parcelle)
 
 
 @router.delete("/parcelles/{pid}", status_code=204)
@@ -186,6 +223,36 @@ def supprimer_parcelle(pid: int, db: Session = Depends(get_db), user=Depends(cur
     parcelle = _parcelle_du_user(db, pid, user)
     _supprimer_dependances_parcelle(db, parcelle.id)
     db.delete(parcelle)
+    db.commit()
+    return Response(status_code=204)
+
+
+# ---------------------------------------------------------------------------
+# Équipements associés à une parcelle
+# ---------------------------------------------------------------------------
+@router.post("/parcelles/{pid}/equipements", response_model=ParcelleOut, status_code=201)
+def associer_equipement(
+    pid: int,
+    donnees: AssocierEquipement,
+    db: Session = Depends(get_db),
+    user=Depends(current_user),
+):
+    parcelle = _parcelle_du_user(db, pid, user)
+    equipement = db.get(Equipement, donnees.equipement_id)
+    if not equipement or equipement.exploitation_id not in _ids_exploitations(db, user):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Équipement introuvable")
+    equipement.parcelle_id = parcelle.id
+    db.commit()
+    return _sortie(db, parcelle)
+
+
+@router.delete("/parcelles/{pid}/equipements/{eid}", status_code=204)
+def dissocier_equipement(pid: int, eid: int, db: Session = Depends(get_db), user=Depends(current_user)):
+    _parcelle_du_user(db, pid, user)
+    equipement = db.get(Equipement, eid)
+    if not equipement or equipement.parcelle_id != pid:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Association introuvable")
+    equipement.parcelle_id = None
     db.commit()
     return Response(status_code=204)
 

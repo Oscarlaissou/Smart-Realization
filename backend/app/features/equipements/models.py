@@ -11,3 +11,12 @@ class Equipement(Base):                 # capteur | electrovanne | camera
     en_ligne: Mapped[bool] = mapped_column(Boolean, default=True)
     parcelle_id: Mapped[int | None] = mapped_column(ForeignKey("parcelles.id"), nullable=True)
 
+    # Rempli automatiquement par le listener MQTT à chaque mesure reçue
+    # (pour l'instant, uniquement pour les équipements de type "capteur").
+    derniere_donnee: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    # Rempli automatiquement à la création (voir equipements/router.py),
+    # à partir de l'exploitation de l'utilisateur connecté.
+    exploitation_id: Mapped[int | None] = mapped_column(
+        ForeignKey("exploitations.id"), nullable=True
+    )

@@ -42,3 +42,12 @@ export const supprimerCulture = (cultureId) =>
   api(`/cultures/${cultureId}`, { method: 'DELETE' })
 
 export const listerEquipements = () => api('/equipements')
+
+export const associerEquipement = (parcelleId, equipementId) =>
+  api(`/parcelles/${parcelleId}/equipements`, {
+    method: 'POST',
+    body: JSON.stringify({ equipement_id: equipementId }),
+  })
+
+export const dissocierEquipement = (parcelleId, equipementId) =>
+  api(`/parcelles/${parcelleId}/equipements/${equipementId}`, { method: 'DELETE' })

@@ -17,11 +17,14 @@ export default function FicheParcelle({
   onAjouterCulture,
   onModifierCulture,
   onSupprimerCulture,
+  onAssocierEquipement,
+  onDissocierEquipement,
   enCours,
 }) {
   const { t, i18n } = useTranslation()
   const locale = i18n.language === 'en' ? 'en-GB' : 'fr-FR'
-  const [form, setForm] = useState({ nom: '', surface_ha: '', exploitation_id: '' })
+  const [form, setForm] = useState({ nom: '', surface_ha: '', exploitation_id: '', type_sol: '' })
+  const [equipementChoisi, setEquipementChoisi] = useState('')
   const [nouvelleCulture, setNouvelleCulture] = useState({ espece: '', date_semis: '' })
   const [cultureEnEdition, setCultureEnEdition] = useState(null)
 
@@ -30,7 +33,9 @@ export default function FicheParcelle({
       nom: parcelle?.nom || '',
       surface_ha: parcelle?.surface_ha ?? '',
       exploitation_id: parcelle?.exploitation_id || '',
+      type_sol: parcelle?.type_sol || '',
     })
+    setEquipementChoisi('')
     setNouvelleCulture({ espece: '', date_semis: '' })
     setCultureEnEdition(null)
   }, [parcelle])
@@ -40,6 +45,7 @@ export default function FicheParcelle({
   const equipementsParcelle = equipements.filter(
     (equipement) => equipement.parcelle_id === parcelle.id,
   )
+  const equipementsLibres = equipements.filter((equipement) => !equipement.parcelle_id)
   const cultures = parcelle.cultures || []
 
   const envoyerParcelle = (evenement) => {
@@ -48,7 +54,14 @@ export default function FicheParcelle({
       nom: form.nom,
       surface_ha: Number(form.surface_ha),
       exploitation_id: Number(form.exploitation_id),
+      type_sol: form.type_sol || null,
     })
+  }
+
+  const associer = () => {
+    if (!equipementChoisi) return
+    onAssocierEquipement(Number(equipementChoisi))
+    setEquipementChoisi('')
   }
 
   const ajouterCulture = (evenement) => {
@@ -129,6 +142,16 @@ export default function FicheParcelle({
         </div>
 
         <div className="champ">
+          <label htmlFor="parcelle-type-sol">{t('parcelles.typeSol')}</label>
+          <input
+            id="parcelle-type-sol"
+            value={form.type_sol}
+            placeholder={t('parcelles.typeSolPlaceholder')}
+            onChange={(evenement) => setForm({ ...form, type_sol: evenement.target.value })}
+          />
+        </div>
+
+        <div className="champ">
           <span className="champ-legende">{t('parcelles.equipements')}</span>
           <div className="equipements-chips">
             {equipementsParcelle.length === 0 && (
@@ -144,9 +167,42 @@ export default function FicheParcelle({
                 {equipement.en_ligne
                   ? t('parcelles.statutEnLigne')
                   : t('parcelles.statutHorsLigne')}
+                <button
+                  type="button"
+                  className="lien-action danger"
+                  disabled={enCours}
+                  aria-label={t('parcelles.retirerEquipement', { code: equipement.code })}
+                  onClick={() => onDissocierEquipement(equipement.id)}
+                >
+                  ×
+                </button>
               </span>
             ))}
           </div>
+          {equipementsLibres.length > 0 && (
+            <div className="culture-ajout">
+              <select
+                aria-label={t('parcelles.choisirEquipement')}
+                value={equipementChoisi}
+                onChange={(evenement) => setEquipementChoisi(evenement.target.value)}
+              >
+                <option value="">{t('parcelles.choisirEquipement')}</option>
+                {equipementsLibres.map((equipement) => (
+                  <option key={equipement.id} value={equipement.id}>
+                    {equipement.code} ({equipement.type})
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="bouton-secondaire"
+                disabled={enCours || !equipementChoisi}
+                onClick={associer}
+              >
+                {t('parcelles.associerEquipement')}
+              </button>
+            </div>
+          )}
         </div>
 
         <div className="parcelle-formulaire-actions">
