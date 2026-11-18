@@ -1,4 +1,8 @@
+
+from datetime import datetime
+
 from pydantic import BaseModel, Field, field_validator
+
 from ...core.base_schema import ORM
 
 
@@ -12,10 +16,13 @@ class EquipementIn(BaseModel):
     @classmethod
     def nettoyer(cls, valeur: str) -> str:
         valeur = valeur.strip()
+
         if not valeur:
             raise ValueError("Le code et le type sont obligatoires.")
+
         return valeur
 
 
 class EquipementOut(ORM, EquipementIn):
     id: int
+    derniere_donnee: datetime | None = None

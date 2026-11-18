@@ -1,35 +1,75 @@
+
+"""Réception des mesures envoyées par les ESP32 via MQTT.
+
+Topic attendu :
+    sevia/parcelle/<id>/humidite
+
+Payload accepté :
+    {"humidite": 27.4}
+    {"valeur": 27.4}
+    {"moisture": 27.4}
+    27.4
+"""
+
 import json
-import uuid
+import logging
+from datetime import datetime
+
 import paho.mqtt.client as mqtt
+
 from ..core.config import settings
 from ..core.database import SessionLocal
 from ..features.parcelles.models import Parcelle
 from ..features.humidite.models import MesureHumidite
+from ..features.equipements.models import Equipement
+from ..features.alertes import service as alerte_service
+
+
+logger = logging.getLogger(__name__)
 
 _client = None
 
 
-def _extraire_mesure(topic: str, payload_str: str) -> tuple[int | None, float | None]:
+def _extraire_mesure(
+    topic: str,
+    payload_str: str
+) -> tuple[int | None, float | None]:
+
     parcelle_id = None
     valeur = None
 
+    # Récupération de l'identifiant de la parcelle depuis le topic.
     morceaux = topic.split("/")
-    if "parcelles" in morceaux:
-        idx = morceaux.index("parcelles")
-        if idx + 1 < len(morceaux) and morceaux[idx + 1].isdigit():
-            parcelle_id = int(morceaux[idx + 1])
 
+    for prefixe in ("parcelle", "parcelles"):
+        if prefixe in morceaux:
+            idx = morceaux.index(prefixe)
+
+            if idx + 1 < len(morceaux):
+                identifiant = morceaux[idx + 1]
+
+                if identifiant.isdigit():
+                    parcelle_id = int(identifiant)
+
+            break
+
+    # Lecture du contenu envoyé par l'ESP32.
     try:
         data = json.loads(payload_str)
+
         if isinstance(data, dict):
+
             if data.get("parcelle_id") is not None:
                 parcelle_id = int(data["parcelle_id"])
+
             for cle in ("humidite", "valeur", "moisture"):
                 if data.get(cle) is not None:
                     valeur = float(data[cle])
                     break
+
         elif isinstance(data, (int, float)):
             valeur = float(data)
+
     except (json.JSONDecodeError, ValueError, TypeError):
         try:
             valeur = float(payload_str.strip())
@@ -38,81 +78,183 @@ def _extraire_mesure(topic: str, payload_str: str) -> tuple[int | None, float | 
 
     if parcelle_id is None or valeur is None:
         return None, None
+
+    # Une humidité doit être comprise entre 0 et 100 %.
+    if not 0 <= valeur <= 100:
+        return None, None
+
     return parcelle_id, round(valeur, 1)
 
 
-def on_connect(client, userdata, flags, rc, *args):
-    topic = getattr(settings, "MQTT_TOPIC", "sevia_collines/#") or "sevia_collines/#"
+def on_connect(client, userdata, flags, reason_code, properties):
+    """Appelé lorsque le client se connecte au broker MQTT."""
+
+    topic = (
+        getattr(settings, "MQTT_TOPIC", None)
+        or "sevia/parcelle/+/humidite"
+    )
+
     client.subscribe(topic, qos=1)
-    print(f"[MQTT] Connecté à {settings.MQTT_HOST}:{settings.MQTT_PORT} (rc={rc}) | Topic='{topic}'", flush=True)
+
+    logger.info(
+        "[MQTT] Connecté à %s:%s (code=%s), topic=%s",
+        settings.MQTT_HOST,
+        settings.MQTT_PORT,
+        reason_code,
+        topic,
+    )
 
 
-def on_disconnect(client, userdata, *args):
-    print("[MQTT] Déconnecté du broker, tentative de reconnexion...", flush=True)
+def on_disconnect(
+    client,
+    userdata,
+    disconnect_flags,
+    reason_code,
+    properties
+):
+    """Appelé lorsque le client perd sa connexion."""
+
+    logger.warning(
+        "[MQTT] Déconnecté du broker (code=%s).",
+        reason_code,
+    )
 
 
 def on_message(client, userdata, msg):
-    payload_str = msg.payload.decode("utf-8", errors="ignore")
-    print(f"[MQTT] Reçu sur '{msg.topic}' : {payload_str}", flush=True)
+    """Traite une mesure reçue depuis un ESP32."""
 
-    parcelle_id, valeur = _extraire_mesure(msg.topic, payload_str)
+    payload_str = msg.payload.decode("utf-8", errors="ignore")
+
+    logger.info(
+        "[MQTT] Message reçu sur %s : %s",
+        msg.topic,
+        payload_str,
+    )
+
+    parcelle_id, valeur = _extraire_mesure(
+        msg.topic,
+        payload_str,
+    )
+
     if parcelle_id is None or valeur is None:
-        print("[MQTT] Payload ignoré (attendu: parcelle_id et humidite).", flush=True)
+        logger.warning("[MQTT] Message ignoré : format invalide.")
         return
 
     db = SessionLocal()
+
     try:
-        parcelle = db.query(Parcelle).filter(Parcelle.id == parcelle_id).first()
+        # 1. Vérifier que la parcelle existe.
+        parcelle = db.get(Parcelle, parcelle_id)
+
         if not parcelle:
-            dispos = [(p.id, p.nom) for p in db.query(Parcelle).all()]
-            print(f"[MQTT] Parcelle #{parcelle_id} introuvable. IDs en base : {dispos}", flush=True)
+            logger.warning(
+                "[MQTT] Parcelle #%s introuvable.",
+                parcelle_id,
+            )
             return
 
-        db.add(MesureHumidite(parcelle_id=parcelle_id, valeur=valeur))
+        # 2. Enregistrer la mesure d'humidité.
+        mesure = MesureHumidite(
+            parcelle_id=parcelle_id,
+            valeur=valeur,
+        )
+
+        db.add(mesure)
+
+        # 3. Mettre à jour les capteurs associés à la parcelle.
+        # Le message actuel ne permet pas d'identifier un capteur précis.
+        capteurs = (
+            db.query(Equipement)
+            .filter(
+                Equipement.parcelle_id == parcelle_id,
+                Equipement.type == "capteur",
+            )
+            .all()
+        )
+
+        maintenant = datetime.utcnow()
+
+        for capteur in capteurs:
+            capteur.derniere_donnee = maintenant
+            capteur.en_ligne = True
+
+        # 4. Enregistrer la mesure et les modifications des équipements.
         db.commit()
-        print(f"[MQTT] Enregistré : {parcelle.nom} (#{parcelle_id}) -> {valeur} %", flush=True)
 
-        seuil_min = getattr(parcelle, "seuil_humidite_min", 30.0) or 30.0
-        if valeur < seuil_min:
-            try:
-                from ..features.alertes.models import Alerte
+        logger.info(
+            "[MQTT] Mesure enregistrée : %s (#%s) -> %.1f %%",
+            parcelle.nom,
+            parcelle_id,
+            valeur,
+        )
 
-                existe = (
-                    db.query(Alerte)
-                    .filter(Alerte.parcelle_id == parcelle_id, Alerte.lue == False)  # noqa: E712
-                    .first()
-                )
-                if not existe:
-                    db.add(
-                        Alerte(
-                            parcelle_id=parcelle_id,
-                            titre=f"Stress hydrique — {parcelle.nom}",
-                            message=f"Humidité mesurée à {valeur}% (seuil bas : {seuil_min}%). Arrosage recommandé.",
-                            niveau="critique",
-                        )
-                    )
-                    db.commit()
-                    print(f"[MQTT] Alerte créée pour {parcelle.nom}.", flush=True)
-            except Exception as err_alerte:
-                db.rollback()
-                print(f"[MQTT] Erreur création alerte : {err_alerte}", flush=True)
-    except Exception as e:
+        # 5. Vérifier les seuils d'humidité et créer une alerte si nécessaire.
+        alerte = alerte_service.verifier_humidite(
+            db,
+            parcelle,
+            valeur,
+        )
+
+        if alerte:
+            logger.warning(
+                "[MQTT] Alerte créée : %s",
+                alerte.message,
+            )
+
+    except Exception:
         db.rollback()
-        print(f"[MQTT] Erreur SQL : {e}", flush=True)
+        logger.exception(
+            "[MQTT] Erreur pendant le traitement de la mesure."
+        )
+
     finally:
         db.close()
 
 
 def demarrer():
-    c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
-    c.on_message = _on_message
-    c.connect(settings.MQTT_HOST, settings.MQTT_PORT)
-    c.subscribe("sevia/parcelle/+/humidite")
-    threading.Thread(target=c.loop_forever, daemon=True).start()
+    """Démarre le client MQTT."""
+
+    global _client
+
+    if _client is not None:
+        logger.info("[MQTT] Le client est déjà démarré.")
+        return
+
+    try:
+        client = mqtt.Client(
+            callback_api_version=mqtt.CallbackAPIVersion.VERSION2
+        )
+
+        client.on_connect = on_connect
+        client.on_disconnect = on_disconnect
+        client.on_message = on_message
+
+        client.connect(
+            settings.MQTT_HOST,
+            settings.MQTT_PORT,
+            keepalive=60,
+        )
+
+        _client = client
+        client.loop_start()
+
+        logger.info("[MQTT] Client démarré.")
+
+    except Exception:
+        _client = None
+        logger.exception(
+            "[MQTT] Impossible de démarrer le client."
+        )
+
 
 def arreter():
+    """Arrête proprement le client MQTT."""
+
     global _client
-    if _client:
+
+    if _client is not None:
         _client.loop_stop()
         _client.disconnect()
         _client = None
+
+        logger.info("[MQTT] Client arrêté.")
