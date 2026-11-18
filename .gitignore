@@ -8,8 +8,9 @@ dist/
 .env
 .env.*
 !.env.example
-backend/models/
+backend/models/*
 *.pt
+!backend/models/mais.pt
 # Données et sorties d'entraînement YOLO (trop lourdes pour Git)
 maize_tassels_counting_uav_dataset/
 maize_tassels_counting_uav_dataset.zip
