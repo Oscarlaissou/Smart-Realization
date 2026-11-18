@@ -89,8 +89,8 @@ export default function Connexion() {
     setErreur('')
     setChargement(true)
     try {
-      await connexion(email, motDePasse, resterConnecte)
-      navigate('/dashboard')
+      await connexion(email, motDePasse)
+      navigate('/')
     } catch (err) {
       setErreur(err.message || 'Adresse e-mail ou mot de passe incorrect.')
     } finally {
