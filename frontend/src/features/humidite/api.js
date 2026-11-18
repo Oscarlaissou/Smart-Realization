@@ -1,32 +1,42 @@
-// Appels API de la fonctionnalité « humidite »
-import { api } from '../../services/api.js'
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 
-export const lireContexte = () => api('/humidite/contexte')
+function headersAuth() {
+  const token = localStorage.getItem('token')
+  return {
+    'Content-Type': 'application/json',
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  }
+}
 
-export const listerParcelles = () => api('/humidite/parcelles')
+async function gererReponse(res, messageErreur) {
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.detail || messageErreur)
+  }
+  return res.json()
+}
 
-export const lireRecommandations = (parcelleId, seuilMin = 30, seuilMax = 45) =>
-  api(`/humidite/recommandations/${parcelleId}?seuil_min=${seuilMin}&seuil_max=${seuilMax}`)
+export async function lireApercuHumidite() {
+  const res = await fetch(`${API_URL}/humidite/apercu`, {
+    headers: headersAuth(),
+  })
+  return gererReponse(res, "Impossible de charger les données d'humidité.")
+}
 
-export const listerMesures = (parcelleId, limite = 24) =>
-  api(`/humidite/mesures/${parcelleId}?limite=${limite}`)
-
-export const listerIrrigations = () => api('/humidite/irrigations')
-
-export const listerCycles = () => api('/humidite/cycles')
-
-export const ajouterCycle = (donnees) =>
-  api('/humidite/cycles', {
+export async function declarerArrosageManuel(donnees) {
+  const res = await fetch(`${API_URL}/humidite/arrosages`, {
     method: 'POST',
+    headers: headersAuth(),
     body: JSON.stringify(donnees),
   })
+  return gererReponse(res, "Impossible d'enregistrer l'arrosage.")
+}
 
-export const basculerCycle = (cycleId) =>
-  api(`/humidite/cycles/${cycleId}`, {
+export async function sauvegarderSeuilsParcelle(parcelleId, seuils) {
+  const res = await fetch(`${API_URL}/humidite/parcelles/${parcelleId}/seuils`, {
     method: 'PATCH',
+    headers: headersAuth(),
+    body: JSON.stringify(seuils),
   })
-
-export const supprimerCycle = (cycleId) =>
-  api(`/humidite/cycles/${cycleId}`, {
-    method: 'DELETE',
-  })
+  return gererReponse(res, "Impossible d'enregistrer les seuils.")
+}

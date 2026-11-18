@@ -1,29 +1,53 @@
 from datetime import datetime
-from sqlalchemy import String, Integer, Float, Boolean, DateTime, ForeignKey, Text
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import Integer, Float, String, DateTime, ForeignKey
+from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.orm import Mapped, mapped_column
 from ...core.database import Base
 
-class Mesure(Base):                     # Humidité en temps réel
-    __tablename__ = "mesures"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    parcelle_id: Mapped[int] = mapped_column(ForeignKey("parcelles.id"), index=True)
-    humidite: Mapped[float] = mapped_column(Float)
-    horodatage: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
-class CycleIrrigation(Base):            # programmation
-    __tablename__ = "cycles_irrigation"
-    id: Mapped[int] = mapped_column(primary_key=True)
-    parcelle_id: Mapped[int] = mapped_column(ForeignKey("parcelles.id"))
-    heure: Mapped[str] = mapped_column(String(5))
-    duree_min: Mapped[int] = mapped_column(Integer)
-    jours: Mapped[str] = mapped_column(String(60), default="tous")
-    actif: Mapped[bool] = mapped_column(Boolean, default=True)
+class MesureHumidite(Base):
+    __tablename__ = "mesures_humidite"
 
-class Irrigation(Base):                 # journal des irrigations
-    __tablename__ = "irrigations"
     id: Mapped[int] = mapped_column(primary_key=True)
-    parcelle_id: Mapped[int] = mapped_column(ForeignKey("parcelles.id"))
-    debut: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    duree_min: Mapped[int] = mapped_column(Integer, default=0)
-    mode: Mapped[str] = mapped_column(String(12), default="manuel")
+    parcelle_id: Mapped[int] = mapped_column(ForeignKey("parcelles.id", ondelete="CASCADE"), index=True)
+    valeur: Mapped[float] = mapped_column(Float)
+    enregistre_le: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, index=True)
 
+    @hybrid_property
+    def humidite(self) -> float:
+        return self.valeur
+
+    @hybrid_property
+    def horodatage(self) -> datetime:
+        return self.enregistre_le
+
+
+class ArrosageManuel(Base):
+    __tablename__ = "arrosages_manuels"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    parcelle_id: Mapped[int] = mapped_column(ForeignKey("parcelles.id", ondelete="CASCADE"), index=True)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    methode: Mapped[str] = mapped_column(String(60), default="Goutte-à-goutte")
+    volume_litres: Mapped[float] = mapped_column(Float, default=0.0)
+    duree_minutes: Mapped[int] = mapped_column(Integer, default=0)
+    humidite_avant: Mapped[float | None] = mapped_column(Float, nullable=True)
+    notes: Mapped[str] = mapped_column(String(255), default="")
+    date_arrosage: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    @hybrid_property
+    def debut(self) -> datetime:
+        return self.date_arrosage
+
+    @hybrid_property
+    def duree_min(self) -> int:
+        return self.duree_minutes
+
+    @hybrid_property
+    def mode(self) -> str:
+        return self.methode
+
+
+# Alias de compatibilité pour dashboard/router.py et les autres modules existants
+Mesure = MesureHumidite
+Irrigation = ArrosageManuel
