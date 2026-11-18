@@ -12,6 +12,7 @@ from .features.fertilisation import router as fertilisation
 from .features.camera import router as camera
 from .features.dashboard import router as dashboard
 
+
 app = FastAPI(title="Sevia API", version="0.1.0")
 
 ORIGINS = [
