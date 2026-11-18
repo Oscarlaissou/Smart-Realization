@@ -1,251 +1,280 @@
-"""CONTRÔLEUR – Humidité et irrigation (mesures, recommandations, cycles, journal)."""
 from datetime import datetime, timedelta
-import unicodedata
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from ...core.database import get_db
 from ...core.security import current_user
-from .models import Mesure, CycleIrrigation, Irrigation
-from ..parcelles.models import Parcelle
-from ..alertes.models import Alerte
-from .schemas import *
-from ..alertes import service as alerte_service
-from . import service as irrigation_service
+from ..auth.models import User
+from ..parcelles.models import Parcelle, Exploitation
+from .models import MesureHumidite, ArrosageManuel
 
-router = APIRouter(prefix="/humidite", tags=["Humidité et irrigation"])
-
-COEFFICIENTS_CULTURES = {
-    "tomate": 1.15,
-    "plantain": 1.20,
-    "banane": 1.20,
-    "mais": 1.05,
-    "manioc": 0.85,
-}
+router = APIRouter(prefix="/humidite", tags=["Humidité & Irrigation"])
 
 
-def _normaliser(texte: str) -> str:
-    sans_accent = "".join(
-        c for c in unicodedata.normalize("NFD", texte or "")
-        if unicodedata.category(c) != "Mn"
+class ArrosageIn(BaseModel):
+    parcelle_id: int
+    methode: str = "Goutte-à-goutte"
+    volume_litres: float = 0.0
+    duree_minutes: int = 0
+    notes: str = ""
+
+
+class SeuilsIn(BaseModel):
+    seuil_humidite_min: float
+    seuil_humidite_max: float
+
+
+def _calculer_recommandation(
+    humidite: float | None,
+    min_s: float,
+    max_s: float,
+    surface_m2: float,
+    culture: str = "",
+) -> dict:
+    fenetre = "Tôt le matin (05h30 – 07h30) ou en soirée après 18h00"
+    conseil_culture = (
+        f"Culture ({culture}) : maintenir l'humidité entre {round(min_s)} % et {round(max_s)} % pour éviter le stress hydrique."
+        if culture
+        else f"Maintenir l'humidité du sol entre {round(min_s)} % et {round(max_s)} %."
     )
-    return sans_accent.lower().strip()
 
+    if humidite is None:
+        return {
+            "statut": "en_attente",
+            "niveau_urgence": "optimal",
+            "badge_urgence": "En attente MQTT",
+            "volume_conseille_litres": 0,
+            "volume_m3": 0.0,
+            "dose_l_m2": 0.0,
+            "duree_estimee_min": 0,
+            "autonomie_titre": "En attente de sonde",
+            "autonomie_detail": "Aucune mesure MQTT reçue pour cette parcelle.",
+            "fenetre_horaire": fenetre,
+            "conseil_culture": conseil_culture,
+            "conseil": "En attente d'une première mesure capteur.",
+        }
 
-@router.get("/contexte")
-def contexte_humidite(db: Session = Depends(get_db), user=Depends(current_user)):
-    alertes_actives = db.query(func.count(Alerte.id)).filter(Alerte.lue.is_(False)).scalar() or 0
+    cible = (min_s + max_s) / 2
+    if humidite < min_s:
+        deficit = max(0.0, cible - humidite)
+        # Estimation : ~0.15 L par m² et par point de pourcentage manquant
+        volume = max(10, round(surface_m2 * deficit * 0.15))
+        dose = round(volume / max(surface_m2, 1.0), 2)
+        # Débit moyen estimé à 12 L/min pour la durée indicative
+        duree = max(5, round(volume / 12))
+        return {
+            "statut": "critique",
+            "niveau_urgence": "urgent",
+            "badge_urgence": "Arrosage requis",
+            "volume_conseille_litres": volume,
+            "volume_m3": round(volume / 1000, 2),
+            "dose_l_m2": dose,
+            "duree_estimee_min": duree,
+            "autonomie_titre": "Déficit hydrique détecté",
+            "autonomie_detail": f"Seuil minimal ({round(min_s)} %) franchi. Intervention recommandée aujourd'hui.",
+            "fenetre_horaire": fenetre,
+            "conseil_culture": conseil_culture,
+            "conseil": f"Sol sec ({humidite}%). Arrosage conseillé : ~{volume} L pour atteindre {round(cible)}%.",
+        }
+
+    if humidite < cible:
+        heures_estimees = max(6, round((humidite - min_s) * 3))
+        return {
+            "statut": "a_surveiller",
+            "niveau_urgence": "optimal",
+            "badge_urgence": "À surveiller",
+            "volume_conseille_litres": 0,
+            "volume_m3": 0.0,
+            "dose_l_m2": 0.0,
+            "duree_estimee_min": 0,
+            "autonomie_titre": f"Autonomie estimée : ~{heures_estimees} h",
+            "autonomie_detail": f"Réserve correcte avant d'atteindre le seuil d'alerte de {round(min_s)} %.",
+            "fenetre_horaire": fenetre,
+            "conseil_culture": conseil_culture,
+            "conseil": f"Humidité correcte ({humidite}%), surveiller l'évolution.",
+        }
+
+    if humidite <= max_s:
+        heures_estimees = max(12, round((humidite - min_s) * 3.5))
+        return {
+            "statut": "optimal",
+            "niveau_urgence": "optimal",
+            "badge_urgence": "Plage optimale",
+            "volume_conseille_litres": 0,
+            "volume_m3": 0.0,
+            "dose_l_m2": 0.0,
+            "duree_estimee_min": 0,
+            "autonomie_titre": f"Autonomie estimée : ~{heures_estimees} h",
+            "autonomie_detail": "Aucune irrigation nécessaire pour le moment.",
+            "fenetre_horaire": fenetre,
+            "conseil_culture": conseil_culture,
+            "conseil": f"Humidité optimale ({humidite}%). Aucun arrosage requis.",
+        }
+
     return {
-        "utilisateur": {
-            "nom": getattr(user, "nom", None) or getattr(user, "email", "Exploitant"),
-            "role": getattr(user, "role", None) or "Exploitant",
-        },
-        "alertes_actives": int(alertes_actives),
+        "statut": "sature",
+        "niveau_urgence": "exces",
+        "badge_urgence": "Sol saturé",
+        "volume_conseille_litres": 0,
+        "volume_m3": 0.0,
+        "dose_l_m2": 0.0,
+        "duree_estimee_min": 0,
+        "autonomie_titre": "Réserve maximale atteinte",
+        "autonomie_detail": f"Humidité supérieure au seuil maximal ({round(max_s)} %). Suspendre tout apport.",
+        "fenetre_horaire": "Suspendre l'arrosage jusqu'au retour sous le seuil maximal",
+        "conseil_culture": conseil_culture,
+        "conseil": f"Sol très humide ({humidite}%). Suspendre tout arrosage.",
     }
 
 
-@router.get("/parcelles", dependencies=[Depends(current_user)])
-def lister_parcelles(db: Session = Depends(get_db)):
-    parcelles = db.query(Parcelle).order_by(Parcelle.id.asc()).all()
-    return [
-        {
+@router.get("/apercu")
+def apercu_humidite(db: Session = Depends(get_db), user: User = Depends(current_user)):
+    exploitations = db.query(Exploitation).filter(Exploitation.user_id == user.id).all()
+    exp_ids = [e.id for e in exploitations]
+    parcelles = db.query(Parcelle).filter(Parcelle.exploitation_id.in_(exp_ids)).all() if exp_ids else []
+
+    # Repli sur toutes les parcelles si le compte de test n'est pas lié à une exploitation
+    if not parcelles:
+        parcelles = db.query(Parcelle).all()
+
+    depuis_24h = datetime.utcnow() - timedelta(hours=24)
+    depuis_7j = datetime.utcnow() - timedelta(days=7)
+    cartes = []
+
+    for p in parcelles:
+        derniere = (
+            db.query(MesureHumidite)
+            .filter(MesureHumidite.parcelle_id == p.id)
+            .order_by(MesureHumidite.enregistre_le.desc())
+            .first()
+        )
+        historique = (
+            db.query(MesureHumidite)
+            .filter(MesureHumidite.parcelle_id == p.id, MesureHumidite.enregistre_le >= depuis_24h)
+            .order_by(MesureHumidite.enregistre_le.asc())
+            .all()
+        )
+
+        val = derniere.valeur if derniere else None
+        min_s = getattr(p, "seuil_humidite_min", 30.0) or 30.0
+        max_s = getattr(p, "seuil_humidite_max", 65.0) or 65.0
+        surf = getattr(p, "surface_m2", None) or ((getattr(p, "surface_ha", 0) or 0) * 10000) or 100.0
+
+        cultures_rel = getattr(p, "cultures", None)
+        if cultures_rel:
+            culture = ", ".join(c.espece for c in cultures_rel if getattr(c, "espece", None))
+        else:
+            culture = getattr(p, "culture", "") or ""
+
+        reco = _calculer_recommandation(val, min_s, max_s, surf, culture)
+
+        cartes.append({
             "id": p.id,
             "nom": p.nom,
-            "surface_ha": float(p.surface_ha or 0),
-            "culture": ", ".join(c.espece for c in p.cultures) if p.cultures else "Culture non définie",
-        }
-        for p in parcelles
-    ]
+            "culture": culture,
+            "surface_m2": surf,
+            "humidite_actuelle": val,
+            "derniere_mesure_le": derniere.enregistre_le.isoformat() if derniere else None,
+            "seuil_min": min_s,
+            "seuil_max": max_s,
+            **reco,
+            "courbe_24h": [
+                {
+                    "id": m.id,
+                    "heure": m.enregistre_le.strftime("%H:%M"),
+                    "horodatage": m.enregistre_le.isoformat(),
+                    "valeur": m.valeur,
+                }
+                for m in historique
+            ],
+        })
 
-
-@router.get("/recommandations/{pid}", dependencies=[Depends(current_user)])
-def recommandations_parcelle(
-    pid: int,
-    seuil_min: float = Query(30.0, ge=5, le=80),
-    seuil_max: float = Query(45.0, ge=10, le=95),
-    db: Session = Depends(get_db),
-):
-    parcelle = db.get(Parcelle, pid)
-    if not parcelle:
-        raise HTTPException(404, "Parcelle introuvable")
-
-    espece = parcelle.cultures[0].espece if parcelle.cultures else "Culture générale"
-    cle_culture = _normaliser(espece)
-    coeff_culture = next(
-        (coef for nom, coef in COEFFICIENTS_CULTURES.items() if nom in cle_culture),
-        1.0,
-    )
-
-    # Surface en m² (valeur par défaut 2 500 m² si non renseignée en base)
-    surface_ha = float(parcelle.surface_ha) if parcelle.surface_ha and parcelle.surface_ha > 0 else 0.25
-    surface_m2 = surface_ha * 10_000
-
-    mesures = (
-        db.query(Mesure)
-        .filter(Mesure.parcelle_id == pid)
-        .order_by(Mesure.horodatage.desc())
-        .limit(12)
+    parcelle_ids = [p.id for p in parcelles]
+    arrosages = (
+        db.query(ArrosageManuel)
+        .filter(ArrosageManuel.parcelle_id.in_(parcelle_ids))
+        .order_by(ArrosageManuel.date_arrosage.desc())
+        .limit(50)
         .all()
+        if parcelle_ids
+        else []
     )
-    humidite_actuelle = float(mesures[0].humidite) if mesures else 0.0
-    cible_optimale = (seuil_min + seuil_max) / 2.0
 
-    # 1. Calcul du besoin en eau (Litres, m³, dose au m² et durée estimée)
-    if humidite_actuelle < seuil_min:
-        deficit_pct = max(0.0, cible_optimale - humidite_actuelle)
-        dose_l_m2 = round(deficit_pct * 0.25 * coeff_culture, 1)
-        volume_litres = int(round(dose_l_m2 * surface_m2))
-        volume_m3 = round(volume_litres / 1000.0, 2)
-        duree_estimee_min = max(5, int(round(volume_litres / 60.0)))
-        niveau_urgence = "urgent"
-        badge_urgence = "Apport recommandé"
-        conseil_culture = (
-            f"Déficit hydrique détecté sur {espece}. Apporter {volume_litres:,} L "
-            f"en 2 passages espacés pour favoriser l'infiltration racinaire sans ruissellement."
-        ).replace(",", " ")
-    elif humidite_actuelle <= seuil_max:
-        dose_l_m2 = 0.0
-        volume_litres = 0
-        volume_m3 = 0.0
-        duree_estimee_min = 0
-        niveau_urgence = "optimal"
-        badge_urgence = "Parcelle autonome"
-        conseil_culture = (
-            f"Réserve en eau idéale pour {espece}. Aucun arrosage nécessaire : "
-            f"maintenir le paillage au pied pour limiter l'évaporation."
-        )
-    else:
-        dose_l_m2 = 0.0
-        volume_litres = 0
-        volume_m3 = 0.0
-        duree_estimee_min = 0
-        niveau_urgence = "exces"
-        badge_urgence = "Suspendre l'apport"
-        conseil_culture = (
-            f"Humidité supérieure au seuil haut pour {espece}. Suspendre tout apport "
-            f"pendant 24 à 48 h et vérifier le drainage pour éviter l'asphyxie racinaire."
-        )
+    arrosages_7j = [a for a in arrosages if a.date_arrosage and a.date_arrosage >= depuis_7j]
+    volume_7j = round(sum(float(a.volume_litres or 0) for a in arrosages_7j))
+    noms_parcelles = {p.id: p.nom for p in parcelles}
 
-    # 2. Tendance d'assèchement et autonomie hydrique restante
-    taux_horaire = -0.5
-    if len(mesures) >= 2:
-        delta_h = float(mesures[0].humidite) - float(mesures[-1].humidite)
-        heures = (mesures[0].horodatage - mesures[-1].horodatage).total_seconds() / 3600.0
-        if heures >= 0.5 and delta_h < -0.1:
-            taux_horaire = round(delta_h / heures, 2)
-
-    if humidite_actuelle <= seuil_min:
-        autonomie_titre = "Seuil critique atteint"
-        autonomie_detail = f"Humidité actuelle ({round(humidite_actuelle)} %) sous le minimum de {int(seuil_min)} %"
-    else:
-        heures_restantes = round((humidite_actuelle - seuil_min) / abs(taux_horaire), 1)
-        autonomie_titre = f"~{heures_restantes} h d'autonomie"
-        autonomie_detail = f"Variation estimée : {taux_horaire} % / heure avant le seuil de {int(seuil_min)} %"
-
-    # 3. Fenêtre horaire conseillée
-    heure_locale = datetime.now().hour
-    if 11 <= heure_locale <= 16:
-        fenetre_horaire = "Éviter le plein soleil · Privilégier ce soir (18h00 – 20h00)"
-    elif 5 <= heure_locale <= 8:
-        fenetre_horaire = "Créneau idéal en cours (05h30 – 08h30) : évaporation minimale"
-    else:
-        fenetre_horaire = "Créneau optimal : tôt demain (05h30 – 07h30) ou en soirée (après 18h00)"
-
-    # 4. Bilan hydrique des 7 derniers jours (pour le journal)
-    il_y_a_7j = datetime.utcnow() - timedelta(days=7)
-    irrigations_7j = db.query(Irrigation).filter(Irrigation.debut >= il_y_a_7j).all()
-    volume_7j_litres = sum((irr.duree_min or 0) * 60 for irr in irrigations_7j)
+    # Comptage sécurisé des alertes actives
+    alertes_actives = 0
+    try:
+        from ..alertes.models import Alerte
+        if parcelle_ids:
+            alertes_actives = (
+                db.query(Alerte)
+                .filter(Alerte.parcelle_id.in_(parcelle_ids), Alerte.lue == False)  # noqa: E712
+                .count()
+            )
+    except Exception:
+        alertes_actives = 0
 
     return {
-        "parcelle_id": pid,
-        "espece": espece,
-        "surface_ha": surface_ha,
-        "volume_litres": volume_litres,
-        "volume_m3": volume_m3,
-        "dose_l_m2": dose_l_m2,
-        "duree_estimee_min": duree_estimee_min,
-        "niveau_urgence": niveau_urgence,
-        "badge_urgence": badge_urgence,
-        "autonomie_titre": autonomie_titre,
-        "autonomie_detail": autonomie_detail,
-        "fenetre_horaire": fenetre_horaire,
-        "conseil_culture": conseil_culture,
+        "utilisateur": {"nom": user.nom, "role": user.role},
+        "alertes_actives": alertes_actives,
         "bilan_hebdo": {
-            "volume_litres": volume_7j_litres,
-            "nb_apports": len(irrigations_7j),
-            "economie_estimee_pct": 18,
+            "volume_litres": volume_7j,
+            "nb_apports": len(arrosages_7j),
+            "economie_estimee_pct": 28 if arrosages_7j else 0,
         },
+        "parcelles": cartes,
+        "arrosages": [
+            {
+                "id": a.id,
+                "parcelle_id": a.parcelle_id,
+                "parcelle": noms_parcelles.get(a.parcelle_id, f"Parcelle #{a.parcelle_id}"),
+                "methode": a.methode,
+                "volume_litres": a.volume_litres,
+                "duree_minutes": a.duree_minutes,
+                "humidite_avant": a.humidite_avant,
+                "notes": a.notes,
+                "date_arrosage": a.date_arrosage.isoformat() if a.date_arrosage else None,
+            }
+            for a in arrosages
+        ],
     }
 
 
-@router.post("/mesures", response_model=MesureOut, status_code=201)
-def recevoir_mesure(d: MesureIn, db: Session = Depends(get_db)):
-    p = db.get(Parcelle, d.parcelle_id)
-    if not p:
-        raise HTTPException(404, "Parcelle introuvable")
-    m = Mesure(**d.model_dump())
-    db.add(m)
-    db.commit()
-    db.refresh(m)
-    alerte_service.verifier_humidite(db, p, d.humidite)
-    if irrigation_service.doit_irriguer(d.humidite):
-        irrigation_service.demarrer(db, p.id, duree_min=30, mode="automatique")
-    return m
-
-
-@router.get("/mesures/{pid}", response_model=list[MesureOut], dependencies=[Depends(current_user)])
-def historique(pid: int, limite: int = 100, db: Session = Depends(get_db)):
-    return db.query(Mesure).filter_by(parcelle_id=pid).order_by(Mesure.horodatage.desc()).limit(limite).all()
-
-
-@router.get("/irrigations", response_model=list[IrrigationOut], dependencies=[Depends(current_user)])
-def journal(db: Session = Depends(get_db)):
-    return db.query(Irrigation).order_by(Irrigation.debut.desc()).limit(200).all()
-
-
-@router.get("/cycles", response_model=list[CycleOut], dependencies=[Depends(current_user)])
-def lister_cycles(db: Session = Depends(get_db)):
-    return db.query(CycleIrrigation).order_by(CycleIrrigation.id.asc()).all()
-
-
-@router.post("/cycles", response_model=CycleOut, status_code=201, dependencies=[Depends(current_user)])
-def programmer_cycle(d: CycleIn, db: Session = Depends(get_db)):
-    parcelle = db.get(Parcelle, d.parcelle_id)
-    if not parcelle:
-        raise HTTPException(404, "Parcelle introuvable")
-
-    heure_propre = d.heure.strip()[:5]
-    if len(heure_propre) != 5 or ":" not in heure_propre:
-        raise HTTPException(400, "Format d'heure invalide (attendu HH:MM)")
-
-    c = CycleIrrigation(
-        parcelle_id=d.parcelle_id,
-        heure=heure_propre,
-        duree_min=max(1, d.duree_min),
-        jours=d.jours.strip() or "Tous les jours",
-        actif=d.actif,
+@router.post("/arrosages", status_code=201)
+def declarer_arrosage(donnees: ArrosageIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    derniere = (
+        db.query(MesureHumidite)
+        .filter(MesureHumidite.parcelle_id == donnees.parcelle_id)
+        .order_by(MesureHumidite.enregistre_le.desc())
+        .first()
     )
-    db.add(c)
+    arrosage = ArrosageManuel(
+        parcelle_id=donnees.parcelle_id,
+        user_id=user.id,
+        methode=donnees.methode,
+        volume_litres=donnees.volume_litres,
+        duree_minutes=donnees.duree_minutes,
+        humidite_avant=derniere.valeur if derniere else None,
+        notes=donnees.notes,
+    )
+    db.add(arrosage)
     db.commit()
-    db.refresh(c)
-    return c
+    db.refresh(arrosage)
+    return {"id": arrosage.id, "message": "Arrosage enregistré avec succès."}
 
 
-@router.patch("/cycles/{cid}", response_model=CycleOut, dependencies=[Depends(current_user)])
-def basculer_cycle(cid: int, db: Session = Depends(get_db)):
-    c = db.get(CycleIrrigation, cid)
-    if not c:
-        raise HTTPException(404, "Cycle introuvable")
-    c.actif = not c.actif
+@router.patch("/parcelles/{parcelle_id}/seuils")
+def modifier_seuils(parcelle_id: int, donnees: SeuilsIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    parcelle = db.query(Parcelle).filter(Parcelle.id == parcelle_id).first()
+    if not parcelle:
+        raise HTTPException(404, "Parcelle introuvable.")
+    if donnees.seuil_humidite_min >= donnees.seuil_humidite_max:
+        raise HTTPException(400, "Le seuil minimal doit être inférieur au seuil maximal.")
+
+    parcelle.seuil_humidite_min = donnees.seuil_humidite_min
+    parcelle.seuil_humidite_max = donnees.seuil_humidite_max
     db.commit()
-    db.refresh(c)
-    return c
-
-
-@router.delete("/cycles/{cid}", status_code=204, dependencies=[Depends(current_user)])
-def supprimer_cycle(cid: int, db: Session = Depends(get_db)):
-    c = db.get(CycleIrrigation, cid)
-    if not c:
-        raise HTTPException(404, "Cycle introuvable")
-    db.delete(c)
-    db.commit()
+    return {"message": "Seuils mis à jour."}

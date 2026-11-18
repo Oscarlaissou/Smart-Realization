@@ -55,11 +55,10 @@ def _supprimer_dependances_parcelle(db: Session, parcelle_id: int) -> None:
     from ..camera.models import Comptage
     from ..equipements.models import Equipement
     from ..fertilisation.models import Apport, DonneeAgro
-    from ..humidite.models import CycleIrrigation, Irrigation, Mesure
+    from ..humidite.models import Irrigation, Mesure
 
     db.query(Alerte).filter(Alerte.parcelle_id == parcelle_id).delete(synchronize_session=False)
     db.query(Mesure).filter(Mesure.parcelle_id == parcelle_id).delete(synchronize_session=False)
-    db.query(CycleIrrigation).filter(CycleIrrigation.parcelle_id == parcelle_id).delete(synchronize_session=False)
     db.query(Irrigation).filter(Irrigation.parcelle_id == parcelle_id).delete(synchronize_session=False)
     db.query(Comptage).filter(Comptage.parcelle_id == parcelle_id).delete(synchronize_session=False)
     db.query(DonneeAgro).filter(DonneeAgro.parcelle_id == parcelle_id).delete(synchronize_session=False)
