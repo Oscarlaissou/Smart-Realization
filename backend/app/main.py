@@ -1,3 +1,5 @@
+from fastapi.staticfiles import StaticFiles
+from .features.camera.stockage import DOSSIER_UPLOADS
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -51,6 +53,8 @@ def startup():
 for r in (auth, parcelles, equipements, humidite, alertes, fertilisation, camera, dashboard):
     app.include_router(r.router)
 
+DOSSIER_UPLOADS.mkdir(parents=True, exist_ok=True)
+app.mount("/media", StaticFiles(directory=DOSSIER_UPLOADS), name="media")
 
 @app.get("/health", tags=["Système"])
 def health():
