@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+﻿from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
+
 from ...core.database import get_db
 from ...core.security import (
     hacher_mot_de_passe,
@@ -9,6 +10,7 @@ from ...core.security import (
     current_user,
 )
 from .models import User
+from .schemas import ProfilIn
 from ..parcelles.models import Exploitation
 
 router = APIRouter(prefix="/auth", tags=["Authentification"])
@@ -26,6 +28,18 @@ class InscriptionIn(BaseModel):
 class ConnexionIn(BaseModel):
     email: EmailStr
     mot_de_passe: str
+
+
+def _utilisateur_json(utilisateur: User) -> dict:
+    return {
+        "id": utilisateur.id,
+        "nom": utilisateur.nom,
+        "email": utilisateur.email,
+        "telephone": utilisateur.telephone,
+        "role": utilisateur.role,
+        "langue": utilisateur.langue,
+    }
+
 
 @router.post("/inscription", status_code=201)
 def inscrire(donnees: InscriptionIn, db: Session = Depends(get_db)):
@@ -70,13 +84,10 @@ def inscrire(donnees: InscriptionIn, db: Session = Depends(get_db)):
     return {
         "access_token": token,
         "token_type": "bearer",
-        "utilisateur": {
-            "id": utilisateur.id,
-            "nom": utilisateur.nom,
-            "email": utilisateur.email,
-            "role": utilisateur.role,
-        },
+        "utilisateur": _utilisateur_json(utilisateur),
     }
+
+
 @router.post("/connexion")
 def connecter(donnees: ConnexionIn, db: Session = Depends(get_db)):
     email_propre = donnees.email.lower().strip()
@@ -92,21 +103,27 @@ def connecter(donnees: ConnexionIn, db: Session = Depends(get_db)):
     return {
         "access_token": token,
         "token_type": "bearer",
-        "utilisateur": {
-            "id": utilisateur.id,
-            "nom": utilisateur.nom,
-            "email": utilisateur.email,
-            "role": utilisateur.role,
-        },
+        "utilisateur": _utilisateur_json(utilisateur),
     }
 
 
 @router.get("/moi")
 def profil_connecte(user: User = Depends(current_user)):
-    return {
-        "id": user.id,
-        "nom": user.nom,
-        "email": user.email,
-        "telephone": user.telephone,
-        "role": user.role,
-    }
+    return _utilisateur_json(user)
+
+
+@router.put("/moi")
+def modifier_profil(
+    donnees: ProfilIn,
+    db: Session = Depends(get_db),
+    user: User = Depends(current_user),
+):
+    user.nom = donnees.nom
+    user.telephone = donnees.telephone
+    user.role = donnees.role
+    user.langue = donnees.langue
+    db.commit()
+    db.refresh(user)
+    return _utilisateur_json(user)
+
+
