@@ -25,6 +25,6 @@ def _on_message(client, userdata, msg):
 def demarrer():
     c = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
     c.on_message = _on_message
-    c.connect(settings.MQTT_HOST, settings.MQTT_PORT)
+    c.connect(settings.MQTT_BROKER, settings.MQTT_PORT)
     c.subscribe("sevia/parcelle/+/humidite")
     threading.Thread(target=c.loop_forever, daemon=True).start()
