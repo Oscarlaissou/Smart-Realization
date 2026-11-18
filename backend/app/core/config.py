@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # Comptage YOLO (F7.2) — modèle entraîné par backend/training/entrainer.py
     YOLO_ENABLED: bool = False
     YOLO_MODEL: str = "mais.pt"         # fichier dans backend/models/
-    YOLO_CONFIANCE: float = 0.25
+    YOLO_CONFIANCE: float = 0.15        # meilleur compromis mesuré par training/evaluer_comptage.py
     YOLO_IMGSZ: int = 640               # taille des tuiles (identique à l'entraînement)
     YOLO_ECHELLE: float = 0.5           # réduction avant découpage (identique à l'entraînement)
     YOLO_CHEVAUCHEMENT: int = 64        # recouvrement entre tuiles, en px
