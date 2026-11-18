@@ -1,19 +1,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  lireContexte,
-  listerParcelles,
-  lireRecommandations,
-  listerMesures,
-  listerIrrigations,
-  listerCycles,
-  ajouterCycle,
-  basculerCycle,
-  supprimerCycle,
+  lireApercuHumidite,
+  declarerArrosageManuel,
+  sauvegarderSeuilsParcelle,
 } from './api.js'
 import './Humidite.css'
 
-const CYCLES_PAR_PAGE = 4
 const LIGNES_PAR_PAGE = 5
 
 function formaterDate(isoString) {
@@ -38,86 +31,74 @@ function formaterDate(isoString) {
 export default function Humidite() {
   const [utilisateur, setUtilisateur] = useState({ nom: 'Exploitant', role: 'Exploitant' })
   const [alertesActives, setAlertesActives] = useState(0)
+  const [bilanHebdo, setBilanHebdo] = useState({ volume_litres: 0, nb_apports: 0, economie_estimee_pct: 0 })
 
   const [parcelles, setParcelles] = useState([])
   const [parcelleId, setParcelleId] = useState(null)
   const [recherche, setRecherche] = useState('')
+  const [arrosages, setArrosages] = useState([])
 
-  const [mesures, setMesures] = useState([])
-  const [recommandation, setRecommandation] = useState(null)
-  const [irrigations, setIrrigations] = useState([])
-  const [cycles, setCycles] = useState([])
-
-  // Pagination des cycles et du journal
-  const [pageCycles, setPageCycles] = useState(1)
+  // Pagination du journal
   const [pageJournal, setPageJournal] = useState(1)
 
-  // Seuils cibles
+  // Seuils MQTT de la parcelle sélectionnée
   const [seuilMin, setSeuilMin] = useState(30)
-  const [seuilMax, setSeuilMax] = useState(45)
+  const [seuilMax, setSeuilMax] = useState(65)
+  const [sauvegardeSeuilsEnCours, setSauvegardeSeuilsEnCours] = useState(false)
 
-  // Nouveau cycle
-  const [nouvelleHeure, setNouvelleHeure] = useState('06:00')
-  const [nouvelleDuree, setNouvelleDuree] = useState('30')
-  const [nouvelleFrequence, setNouvelleFrequence] = useState('Tous les jours')
-  const [nouvelleParcelleId, setNouvelleParcelleId] = useState('')
-  const [ajoutCycleEnCours, setAjoutCycleEnCours] = useState(false)
+  // Formulaire de déclaration d'arrosage terrain
+  const [irrigParcelleId, setIrrigParcelleId] = useState('')
+  const [irrigMethode, setIrrigMethode] = useState('Goutte-à-goutte')
+  const [irrigDuree, setIrrigDuree] = useState('25')
+  const [irrigVolume, setIrrigVolume] = useState('150')
+  const [irrigNote, setIrrigNote] = useState('')
+  const [ajoutIrrigEnCours, setAjoutIrrigEnCours] = useState(false)
 
   const [chargement, setChargement] = useState(true)
   const [erreur, setErreur] = useState('')
   const [succes, setSucces] = useState('')
 
-  const chargerTout = useCallback(async () => {
+  const rafraichirApercu = useCallback(async (initial = false) => {
     try {
-      setErreur('')
-      const [ctx, listeP, listeIrr, listeCyc] = await Promise.all([
-        lireContexte(),
-        listerParcelles(),
-        listerIrrigations(),
-        listerCycles(),
-      ])
+      const data = await lireApercuHumidite()
+      if (data?.utilisateur) setUtilisateur(data.utilisateur)
+      setAlertesActives(data?.alertes_actives ?? 0)
+      if (data?.bilan_hebdo) setBilanHebdo(data.bilan_hebdo)
 
-      if (ctx?.utilisateur) setUtilisateur(ctx.utilisateur)
-      setAlertesActives(ctx?.alertes_actives ?? 0)
+      const listeP = data?.parcelles || []
+      setParcelles(listeP)
+      setArrosages(data?.arrosages || [])
 
-      setParcelles(listeP || [])
-      setIrrigations(listeIrr || [])
-      setCycles(listeCyc || [])
-
-      if (listeP && listeP.length > 0) {
-        setParcelleId((prev) => prev ?? (listeP[1]?.id || listeP[0].id))
-        setNouvelleParcelleId((prev) => prev || String(listeP[1]?.id || listeP[0].id))
+      if (listeP.length > 0) {
+        const premiere = listeP[0]
+        setParcelleId((prev) => prev ?? premiere.id)
+        setIrrigParcelleId((prev) => prev || String(premiere.id))
+        if (initial) {
+          setSeuilMin(Number(premiere.seuil_min ?? 30))
+          setSeuilMax(Number(premiere.seuil_max ?? 65))
+        }
       }
+      setErreur('')
     } catch (err) {
-      setErreur(err.message || 'Erreur lors du chargement des données.')
+      if (initial) setErreur(err.message || 'Erreur lors du chargement des données.')
     } finally {
-      setChargement(false)
+      if (initial) setChargement(false)
     }
   }, [])
 
+  // Chargement initial + actualisation MQTT toutes les 5 secondes
   useEffect(() => {
-    chargerTout()
-  }, [chargerTout])
-
-  // Rafraîchissement des mesures et des recommandations toutes les 5 secondes
-  useEffect(() => {
-    if (!parcelleId) return
-
-    const rafraichirParcelle = () => {
-      listerMesures(parcelleId, 12)
-        .then((res) => setMesures(res || []))
-        .catch(() => {})
-
-      lireRecommandations(parcelleId, seuilMin, seuilMax)
-        .then((res) => setRecommandation(res))
-        .catch(() => {})
-    }
-
-    rafraichirParcelle()
-    const timer = setInterval(rafraichirParcelle, 5000)
-
+    rafraichirApercu(true)
+    const timer = setInterval(() => rafraichirApercu(false), 5000)
     return () => clearInterval(timer)
-  }, [parcelleId, seuilMin, seuilMax])
+  }, [rafraichirApercu])
+
+  const selectionnerParcelle = (p) => {
+    setParcelleId(p.id)
+    setIrrigParcelleId(String(p.id))
+    setSeuilMin(Number(p.seuil_min ?? 30))
+    setSeuilMax(Number(p.seuil_max ?? 65))
+  }
 
   const parcelleActive = parcelles.find((p) => p.id === parcelleId) || parcelles[0]
   const nomCourtParcelle = (p) => (p?.nom || '').replace(/^Parcelle\s+/i, '')
@@ -135,9 +116,9 @@ export default function Humidite() {
       (p.culture || '').toLowerCase().includes(recherche.toLowerCase().trim())
   )
 
-  // Jauge d'humidité
-  const derniereMesure = mesures[0]
-  const humiditeActuelle = derniereMesure ? Math.round(Number(derniereMesure.humidite)) : 0
+  // Jauge d'humidité MQTT
+  const aUneMesure = parcelleActive?.humidite_actuelle !== null && parcelleActive?.humidite_actuelle !== undefined
+  const humiditeActuelle = aUneMesure ? Math.round(Number(parcelleActive.humidite_actuelle)) : 0
   const longueurArc = 251.3
   const valeurArc = (Math.min(Math.max(humiditeActuelle, 0), 100) / 100) * longueurArc
   const cibleLongueur = (Math.max(seuilMax - seuilMin, 0) / 100) * longueurArc
@@ -145,123 +126,132 @@ export default function Humidite() {
 
   let etatSol = 'Plage optimale'
   let couleurEtatSol = '#14683F'
-  if (humiditeActuelle < Number(seuilMin)) {
-    etatSol = 'Sol sec'
+  if (!aUneMesure) {
+    etatSol = 'En attente de sonde'
+    couleurEtatSol = '#5B6B63'
+  } else if (humiditeActuelle < Number(seuilMin)) {
+    etatSol = 'Sol sec — Arrosage conseillé'
     couleurEtatSol = '#9A2C1E'
   } else if (humiditeActuelle > Number(seuilMax)) {
     etatSol = 'Trop humide'
     couleurEtatSol = '#8A4A07'
   }
 
-  // Courbe sur 24 heures
-  const mesuresChrono = [...mesures].reverse()
-  const yDepuisHumidite = (h) => 212 - ((Math.min(Math.max(h, 20), 50) - 20) / 30) * 200
-  const pointsCourbe = mesuresChrono
+  // Courbe sur 24 heures (utilise courbe_24h de /humidite/apercu)
+  const courbe = parcelleActive?.courbe_24h || []
+  const yDepuisHumidite = (h) => 212 - ((Math.min(Math.max(h, 0), 100)) / 100) * 200
+  const pointsCourbe = courbe
     .map((m, i) => {
-      const x =
-        mesuresChrono.length === 1
-          ? 330
-          : 46 + (i * (614 - 46)) / (mesuresChrono.length - 1)
-      return `${x.toFixed(1)},${yDepuisHumidite(Number(m.humidite)).toFixed(1)}`
+      const x = courbe.length === 1 ? 330 : 46 + (i * (614 - 46)) / (courbe.length - 1)
+      return `${x.toFixed(1)},${yDepuisHumidite(Number(m.valeur)).toFixed(1)}`
     })
     .join(' ')
 
-  const yBandTop = yDepuisHumidite(Number(seuilMax) || 45)
+  const yBandTop = yDepuisHumidite(Number(seuilMax) || 65)
   const yBandBottom = yDepuisHumidite(Number(seuilMin) || 30)
   const bandHeight = Math.max(yBandBottom - yBandTop, 4)
 
-  // Ajouter un cycle programmé
-  const creerCycle = async (e) => {
-    e.preventDefault()
-    const idParcelleCible = Number(nouvelleParcelleId || parcelles[0]?.id)
-    if (!idParcelleCible || ajoutCycleEnCours) return
+  const enregistrerSeuils = async () => {
+    if (!parcelleActive || sauvegardeSeuilsEnCours) return
+    if (Number(seuilMin) >= Number(seuilMax)) {
+      setErreur('Le seuil minimum doit être inférieur au seuil maximum.')
+      return
+    }
 
-    setAjoutCycleEnCours(true)
+    setSauvegardeSeuilsEnCours(true)
     setErreur('')
     setSucces('')
     try {
-      await ajouterCycle({
-        parcelle_id: idParcelleCible,
-        heure: nouvelleHeure.slice(0, 5),
-        duree_min: Math.max(1, Number(nouvelleDuree) || 30),
-        jours: nouvelleFrequence,
-        actif: true,
+      await sauvegarderSeuilsParcelle(parcelleActive.id, {
+        seuil_humidite_min: Number(seuilMin),
+        seuil_humidite_max: Number(seuilMax),
       })
-      const listeCyc = await listerCycles()
-      const nouveauxCycles = listeCyc || []
-      setCycles(nouveauxCycles)
-      setPageCycles(Math.max(1, Math.ceil(nouveauxCycles.length / CYCLES_PAR_PAGE)))
-      setSucces(`Cycle programmé à ${nouvelleHeure.slice(0, 5)} ajouté avec succès.`)
+      await rafraichirApercu(false)
+      setSucces(`Seuils d'alerte MQTT enregistrés (${seuilMin} % – ${seuilMax} %).`)
       setTimeout(() => setSucces(''), 4000)
     } catch (err) {
-      setErreur(err.message || "Impossible d'ajouter le cycle.")
+      setErreur(err.message || "Impossible d'enregistrer les seuils.")
     } finally {
-      setAjoutCycleEnCours(false)
+      setSauvegardeSeuilsEnCours(false)
     }
   }
 
-  const changerEtatCycle = async (cycleId) => {
+  const appliquerRecommandation = () => {
+    if (!parcelleActive) return
+    if (parcelleActive.duree_estimee_min > 0) {
+      setIrrigDuree(String(parcelleActive.duree_estimee_min))
+    }
+    if (parcelleActive.volume_conseille_litres > 0) {
+      setIrrigVolume(String(parcelleActive.volume_conseille_litres))
+    }
+  }
+
+  const soumettreArrosage = async (e) => {
+    e.preventDefault()
+    const idParcelleCible = Number(irrigParcelleId || parcelles[0]?.id)
+    if (!idParcelleCible || ajoutIrrigEnCours) return
+
+    setAjoutIrrigEnCours(true)
+    setErreur('')
+    setSucces('')
     try {
-      const maj = await basculerCycle(cycleId)
-      setCycles((prev) => prev.map((c) => (c.id === cycleId ? maj : c)))
+      await declarerArrosageManuel({
+        parcelle_id: idParcelleCible,
+        methode: irrigMethode,
+        volume_litres: Math.max(0, Number(irrigVolume) || 0),
+        duree_minutes: Math.max(1, Number(irrigDuree) || 15),
+        notes: irrigNote.trim(),
+      })
+
+      await rafraichirApercu(false)
+      setPageJournal(1)
+      setIrrigNote('')
+      setSucces('Arrosage terrain enregistré dans le journal.')
+      setTimeout(() => setSucces(''), 4000)
     } catch (err) {
-      setErreur(err.message || 'Impossible de modifier le cycle.')
+      setErreur(err.message || "Impossible d'enregistrer l'arrosage.")
+    } finally {
+      setAjoutIrrigEnCours(false)
     }
   }
 
-  const retirerCycle = async (cycleId) => {
-    try {
-      await supprimerCycle(cycleId)
-      setCycles((prev) => prev.filter((c) => c.id !== cycleId))
-    } catch (err) {
-      setErreur(err.message || 'Impossible de supprimer le cycle.')
-    }
-  }
-
-  // Pagination des cycles programmés
-  const totalPagesCycles = Math.max(1, Math.ceil(cycles.length / CYCLES_PAR_PAGE))
-  const pageCyclesCourante = Math.min(pageCycles, totalPagesCycles)
-  const indexDebutCycles = (pageCyclesCourante - 1) * CYCLES_PAR_PAGE
-  const cyclesPagines = cycles.slice(indexDebutCycles, indexDebutCycles + CYCLES_PAR_PAGE)
-
-  // Pagination du journal des irrigations
-  const totalPagesJournal = Math.max(1, Math.ceil(irrigations.length / LIGNES_PAR_PAGE))
+  // Pagination du journal
+  const totalPagesJournal = Math.max(1, Math.ceil(arrosages.length / LIGNES_PAR_PAGE))
   const pageJournalCourante = Math.min(pageJournal, totalPagesJournal)
   const indexDebutJournal = (pageJournalCourante - 1) * LIGNES_PAR_PAGE
-  const irrigationsPaginees = irrigations.slice(indexDebutJournal, indexDebutJournal + LIGNES_PAR_PAGE)
+  const arrosagesPagines = arrosages.slice(indexDebutJournal, indexDebutJournal + LIGNES_PAR_PAGE)
 
   const exporterJournal = () => {
     const lignes = [
-      ['Date', 'Parcelle', 'Duree (min)', 'Volume estime (L)', 'Mode'],
-      ...irrigations.map((irr) => {
-        const p = parcelles.find((item) => item.id === irr.parcelle_id)
-        return [
-          formaterDate(irr.debut),
-          nomCourtParcelle(p) || `Parcelle #${irr.parcelle_id}`,
-          irr.duree_min,
-          irr.duree_min * 60,
-          irr.mode,
-        ]
-      }),
+      ['Date', 'Parcelle', 'Methode', 'Duree (min)', 'Volume (L)', 'Humidite avant (%)', 'Notes'],
+      ...arrosages.map((a) => [
+        formaterDate(a.date_arrosage),
+        a.parcelle,
+        a.methode,
+        a.duree_minutes,
+        a.volume_litres,
+        a.humidite_avant ?? '—',
+        (a.notes || '').replace(/;/g, ','),
+      ]),
     ]
     const csv = '\ufeff' + lignes.map((l) => l.join(';')).join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = 'journal-irrigations.csv'
-    a.click()
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'journal-arrosages-sevia.csv'
+    link.click()
     URL.revokeObjectURL(url)
   }
 
-  const niveauReco = recommandation?.niveau_urgence || (humiditeActuelle < seuilMin ? 'urgent' : 'optimal')
+  const niveauReco = parcelleActive?.niveau_urgence || 'optimal'
 
   return (
     <div className="hum-wrapper">
       <header className="hum-header">
         <div>
           <h1 className="hum-title">Humidité et irrigation</h1>
-          <p className="hum-subtitle">Mesures en temps réel, recommandations hydriques et journal d&apos;arrosage</p>
+          <p className="hum-subtitle">Relevés capteurs MQTT, recommandations hydriques et suivi des arrosages terrain</p>
         </div>
 
         <div className="hum-header-actions">
@@ -304,29 +294,31 @@ export default function Humidite() {
 
       {erreur && <div className="hum-banner-error">{erreur}</div>}
       {succes && <div className="hum-banner-info">{succes}</div>}
-      {chargement && <div className="hum-banner-info">Chargement des capteurs d&apos;humidité...</div>}
+      {chargement && <div className="hum-banner-info">Chargement des capteurs MQTT...</div>}
 
       <div role="group" aria-label="Choix de la parcelle" className="hum-pills">
         {parcellesAffichees.map((p) => (
           <button
             key={p.id}
             type="button"
-            aria-pressed={p.id === parcelleId}
-            className={`hum-pill ${p.id === parcelleId ? 'active' : ''}`}
-            onClick={() => setParcelleId(p.id)}
+            aria-pressed={p.id === parcelleActive?.id}
+            className={`hum-pill ${p.id === parcelleActive?.id ? 'active' : ''}`}
+            onClick={() => selectionnerParcelle(p)}
           >
             {nomCourtParcelle(p)}
           </button>
         ))}
       </div>
 
-      {/* Ligne 1 : Jauge + Courbe 24h + Recommandations intelligentes */}
+      {/* Ligne 1 : Jauge MQTT + Courbe 24h + Recommandations & Seuils */}
       <div className="hum-row">
         <section className="hum-card hum-card-gauge">
           <div>
             <h2 className="hum-card-title">Humidité actuelle</h2>
             <p className="hum-card-sub">
-              {parcelleActive ? `${parcelleActive.nom} · ${parcelleActive.culture}` : 'Sélectionnez une parcelle'}
+              {parcelleActive
+                ? `${parcelleActive.nom}${parcelleActive.culture ? ` · ${parcelleActive.culture}` : ''}`
+                : 'Aucune parcelle configurée'}
             </p>
           </div>
 
@@ -356,7 +348,7 @@ export default function Humidite() {
                 strokeDasharray={`${valeurArc} ${longueurArc}`}
               />
               <text x="110" y="100" textAnchor="middle" fontSize="38" fontWeight="700" fill="#12201A" fontFamily="Space Grotesk, sans-serif">
-                {humiditeActuelle} %
+                {aUneMesure ? `${humiditeActuelle} %` : '—'}
               </text>
               <text x="110" y="124" textAnchor="middle" fontSize="13" fontWeight="600" fill={couleurEtatSol} fontFamily="Inter, sans-serif">
                 {etatSol}
@@ -367,7 +359,7 @@ export default function Humidite() {
           <div className="hum-gauge-footer">
             <span className="hum-live-badge">
               <span className="hum-live-dot" />
-              Capteur actif
+              Flux MQTT actif
             </span>
             <span className="hum-target-text">
               Plage cible {seuilMin} à {seuilMax} %
@@ -382,10 +374,10 @@ export default function Humidite() {
             <rect x="46" y={yBandTop} width="568" height={bandHeight} fill="#E3F4EA" />
 
             {[
-              { y: 212, label: '20 %' },
-              { y: 145.3, label: '30 %' },
-              { y: 78.7, label: '40 %' },
-              { y: 12, label: '50 %' },
+              { y: 212, label: '0 %' },
+              { y: 145.3, label: '33 %' },
+              { y: 78.7, label: '66 %' },
+              { y: 12, label: '100 %' },
             ].map((ligne) => (
               <g key={ligne.label}>
                 <line x1="46" x2="614" y1={ligne.y} y2={ligne.y} stroke="#E8EEE9" />
@@ -395,18 +387,11 @@ export default function Humidite() {
               </g>
             ))}
 
-            {mesuresChrono.map((m, idx) => {
-              const x =
-                mesuresChrono.length === 1
-                  ? 330
-                  : 46 + (idx * (614 - 46)) / (mesuresChrono.length - 1)
-              const d = new Date(m.horodatage.endsWith('Z') ? m.horodatage : `${m.horodatage}Z`)
-              const etiquette =
-                idx === mesuresChrono.length - 1
-                  ? 'Maint.'
-                  : d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+            {courbe.map((m, idx) => {
+              const x = courbe.length === 1 ? 330 : 46 + (idx * (614 - 46)) / (courbe.length - 1)
+              const etiquette = idx === courbe.length - 1 ? 'Maint.' : m.heure
 
-              if (mesuresChrono.length > 7 && idx % 2 !== 0 && idx !== mesuresChrono.length - 1) {
+              if (courbe.length > 7 && idx % 2 !== 0 && idx !== courbe.length - 1) {
                 return null
               }
 
@@ -432,78 +417,73 @@ export default function Humidite() {
           <div className="hum-legend">
             <span className="hum-legend-item">
               <span className="hum-dot" style={{ background: '#1D6FB8' }} />
-              Humidité mesurée
+              Relevés capteur MQTT
             </span>
             <span className="hum-legend-item">
               <span className="hum-dot" style={{ background: '#C9E8D7' }} />
-              Plage cible
+              Plage cible ({seuilMin}–{seuilMax} %)
             </span>
           </div>
         </section>
 
-        {/* Carte 3 : Recommandations d'irrigation */}
         <section className="hum-card hum-card-reco">
           <div className="hum-card-head">
             <h2 className="hum-card-title">Recommandations</h2>
             <span className={`hum-reco-badge ${niveauReco}`}>
-              {recommandation?.badge_urgence || 'Analyse en cours'}
+              {parcelleActive?.badge_urgence || 'Analyse'}
             </span>
           </div>
 
-          {/* Volume d'eau recommandé */}
           <div className={`hum-reco-hero ${niveauReco}`}>
             <div>
               <div className="hum-reco-volume-label">Apport d&apos;eau recommandé</div>
               <div className="hum-reco-volume-val">
-                <strong>{(recommandation?.volume_litres ?? 0).toLocaleString('fr-FR')} L</strong>
-                <span>({recommandation?.volume_m3 ?? 0} m³)</span>
+                <strong>{(parcelleActive?.volume_conseille_litres ?? 0).toLocaleString('fr-FR')} L</strong>
+                <span>({parcelleActive?.volume_m3 ?? 0} m³)</span>
               </div>
             </div>
 
             <div className="hum-reco-metrics">
               <div>
                 <div className="hum-reco-metric-label">Dose surfacique</div>
-                <div className="hum-reco-metric-val">{recommandation?.dose_l_m2 ?? 0} L/m²</div>
+                <div className="hum-reco-metric-val">{parcelleActive?.dose_l_m2 ?? 0} L/m²</div>
               </div>
               <div>
                 <div className="hum-reco-metric-label">Durée conseillée</div>
                 <div className="hum-reco-metric-val">
-                  {recommandation?.duree_estimee_min ? `~${recommandation.duree_estimee_min} min` : '0 min'}
+                  {parcelleActive?.duree_estimee_min ? `~${parcelleActive.duree_estimee_min} min` : '0 min'}
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Autonomie hydrique + Fenêtre horaire */}
           <div className="hum-reco-info-list">
             <div className="hum-reco-info-item">
               <div className="hum-reco-info-title">
-                {recommandation?.autonomie_titre || 'Autonomie hydrique'}
+                {parcelleActive?.autonomie_titre || 'Autonomie hydrique'}
               </div>
               <div className="hum-reco-info-desc">
-                {recommandation?.autonomie_detail || 'Calcul de la courbe d’évaporation en cours...'}
+                {parcelleActive?.autonomie_detail || 'En attente des relevés capteurs.'}
               </div>
             </div>
 
             <div className="hum-reco-info-item">
               <div className="hum-reco-info-title">Fenêtre horaire conseillée</div>
               <div className="hum-reco-info-desc">
-                {recommandation?.fenetre_horaire || 'Privilégier tôt le matin (05h30 – 07h30) ou après 18h00'}
+                {parcelleActive?.fenetre_horaire || 'Privilégier tôt le matin (05h30 – 07h30) ou après 18h00'}
               </div>
             </div>
           </div>
 
-          {/* Conseil agronomique selon la culture */}
-          {recommandation?.conseil_culture && (
+          {parcelleActive?.conseil_culture && (
             <div className="hum-reco-advice">
-              {recommandation.conseil_culture}
+              {parcelleActive.conseil_culture}
             </div>
           )}
 
-          {/* Paramétrage des seuils cibles */}
           <div className="hum-grid-2">
             <div className="hum-field">
-              <label htmlFor="t-min">Seuil minimum (%)</label>
+              <label htmlFor="t-min">Seuil alerte bas (%)</label>
               <input
                 id="t-min"
                 type="number"
@@ -514,7 +494,7 @@ export default function Humidite() {
               />
             </div>
             <div className="hum-field">
-              <label htmlFor="t-max">Seuil maximum (%)</label>
+              <label htmlFor="t-max">Seuil optimal max (%)</label>
               <input
                 id="t-max"
                 type="number"
@@ -525,161 +505,113 @@ export default function Humidite() {
               />
             </div>
           </div>
+
+          <button
+            type="button"
+            className="hum-btn-outline"
+            disabled={sauvegardeSeuilsEnCours || !parcelleActive}
+            onClick={enregistrerSeuils}
+          >
+            {sauvegardeSeuilsEnCours ? 'Enregistrement...' : 'Enregistrer les seuils MQTT'}
+          </button>
         </section>
       </div>
 
-      {/* Ligne 2 : Programmation des cycles + Journal des irrigations */}
+      {/* Ligne 2 : Déclaration d'arrosage terrain + Journal des irrigations */}
       <div className="hum-row">
         <section className="hum-card hum-card-cycles">
-          <h2 className="hum-card-title">Programmation des cycles</h2>
+          <div className="hum-card-head">
+            <div>
+              <h2 className="hum-card-title">Déclarer un arrosage terrain</h2>
+              <p className="hum-card-sub">
+                Consignez chaque arrosage manuel effectué suite aux alertes ou recommandations MQTT
+              </p>
+            </div>
 
-          <div className="hum-table-wrap">
-            <table className="hum-table">
-              <thead>
-                <tr>
-                  <th scope="col">Horaire</th>
-                  <th scope="col">Durée</th>
-                  <th scope="col">Fréquence</th>
-                  <th scope="col">Parcelle</th>
-                  <th scope="col">État</th>
-                  <th scope="col"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {cyclesPagines.length === 0 && (
-                  <tr>
-                    <td colSpan="6" style={{ color: '#5B6B63' }}>Aucun cycle programmé.</td>
-                  </tr>
-                )}
-                {cyclesPagines.map((c) => {
-                  const p = parcelles.find((item) => item.id === c.parcelle_id)
-                  return (
-                    <tr key={c.id}>
-                      <td className="hum-td-bold">{c.heure}</td>
-                      <td>{c.duree_min} min</td>
-                      <td>{c.jours}</td>
-                      <td>{nomCourtParcelle(p) || `#${c.parcelle_id}`}</td>
-                      <td>
-                        <label className="hum-check-label">
-                          <input
-                            type="checkbox"
-                            checked={Boolean(c.actif)}
-                            onChange={() => changerEtatCycle(c.id)}
-                          />
-                          Actif
-                        </label>
-                      </td>
-                      <td>
-                        <button
-                          type="button"
-                          className="hum-btn-icon-del"
-                          aria-label={`Supprimer le cycle de ${c.heure}`}
-                          onClick={() => retirerCycle(c.id)}
-                        >
-                          Supprimer
-                        </button>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+            {(parcelleActive?.volume_conseille_litres ?? 0) > 0 && (
+              <button type="button" className="hum-btn-outline" onClick={appliquerRecommandation}>
+                Appliquer la reco ({parcelleActive.volume_conseille_litres} L)
+              </button>
+            )}
           </div>
 
-          {cycles.length > CYCLES_PAR_PAGE && (
-            <div className="hum-pagination">
-              <span>
-                Affichage {indexDebutCycles + 1}–{Math.min(indexDebutCycles + CYCLES_PAR_PAGE, cycles.length)} sur {cycles.length} cycles
-              </span>
-
-              <div className="hum-page-controls">
-                <button
-                  type="button"
-                  className="hum-page-btn"
-                  disabled={pageCyclesCourante === 1}
-                  onClick={() => setPageCycles((p) => Math.max(1, p - 1))}
-                >
-                  ← Précédent
-                </button>
-
-                {Array.from({ length: totalPagesCycles }, (_, i) => i + 1).map((numPage) => (
-                  <button
-                    key={numPage}
-                    type="button"
-                    aria-current={pageCyclesCourante === numPage ? 'page' : undefined}
-                    className={`hum-page-btn ${pageCyclesCourante === numPage ? 'active' : ''}`}
-                    onClick={() => setPageCycles(numPage)}
-                  >
-                    {numPage}
-                  </button>
-                ))}
-
-                <button
-                  type="button"
-                  className="hum-page-btn"
-                  disabled={pageCyclesCourante === totalPagesCycles}
-                  onClick={() => setPageCycles((p) => Math.min(totalPagesCycles, p + 1))}
-                >
-                  Suivant →
-                </button>
-              </div>
+          <div className="hum-reco-info-item">
+            <div className="hum-reco-info-title">Fonctionnement sans électrovanne</div>
+            <div className="hum-reco-info-desc">
+              Lorsqu&apos;un capteur MQTT descend sous <strong>{seuilMin} %</strong>, une alerte est créée. Après l&apos;arrosage manuel sur la parcelle, enregistrez l&apos;apport ci-dessous pour suivre votre consommation d&apos;eau.
             </div>
-          )}
+          </div>
 
-          <form className="hum-new-cycle" onSubmit={creerCycle}>
-            <div style={{ fontSize: '14px', fontWeight: 600 }}>Nouveau cycle</div>
+          <form className="hum-new-cycle" style={{ borderTop: 0, paddingTop: 0 }} onSubmit={soumettreArrosage}>
             <div className="hum-grid-4">
               <div className="hum-field">
-                <label htmlFor="n-h">Horaire</label>
-                <input
-                  id="n-h"
-                  type="time"
-                  required
-                  value={nouvelleHeure}
-                  onChange={(e) => setNouvelleHeure(e.target.value)}
-                />
-              </div>
-              <div className="hum-field">
-                <label htmlFor="n-d">Durée (min)</label>
-                <input
-                  id="n-d"
-                  type="number"
-                  min="1"
-                  max="240"
-                  required
-                  value={nouvelleDuree}
-                  onChange={(e) => setNouvelleDuree(e.target.value)}
-                />
-              </div>
-              <div className="hum-field">
-                <label htmlFor="n-f">Fréquence</label>
+                <label htmlFor="irr-p">Parcelle arrosée</label>
                 <select
-                  id="n-f"
-                  value={nouvelleFrequence}
-                  onChange={(e) => setNouvelleFrequence(e.target.value)}
-                >
-                  <option>Tous les jours</option>
-                  <option>Tous les 2 jours</option>
-                  <option>Lun, mer, ven</option>
-                  <option>Chaque semaine</option>
-                </select>
-              </div>
-              <div className="hum-field">
-                <label htmlFor="n-p">Parcelle</label>
-                <select
-                  id="n-p"
-                  value={nouvelleParcelleId}
-                  onChange={(e) => setNouvelleParcelleId(e.target.value)}
+                  id="irr-p"
+                  value={irrigParcelleId}
+                  onChange={(e) => setIrrigParcelleId(e.target.value)}
                 >
                   {parcelles.map((p) => (
                     <option key={p.id} value={p.id}>{p.nom}</option>
                   ))}
                 </select>
               </div>
+
+              <div className="hum-field">
+                <label htmlFor="irr-m">Méthode</label>
+                <select
+                  id="irr-m"
+                  value={irrigMethode}
+                  onChange={(e) => setIrrigMethode(e.target.value)}
+                >
+                  <option value="Goutte-à-goutte">Goutte-à-goutte</option>
+                  <option value="Aspersion">Aspersion</option>
+                  <option value="Arrosage manuel">Arrosage manuel</option>
+                  <option value="Motopompe">Motopompe</option>
+                </select>
+              </div>
+
+              <div className="hum-field">
+                <label htmlFor="irr-d">Durée (min)</label>
+                <input
+                  id="irr-d"
+                  type="number"
+                  min="1"
+                  max="360"
+                  required
+                  value={irrigDuree}
+                  onChange={(e) => setIrrigDuree(e.target.value)}
+                />
+              </div>
+
+              <div className="hum-field">
+                <label htmlFor="irr-v">Volume estimé (L)</label>
+                <input
+                  id="irr-v"
+                  type="number"
+                  min="1"
+                  max="100000"
+                  required
+                  value={irrigVolume}
+                  onChange={(e) => setIrrigVolume(e.target.value)}
+                />
+              </div>
             </div>
+
+            <div className="hum-field">
+              <label htmlFor="irr-note">Observation terrain (optionnel)</label>
+              <input
+                id="irr-note"
+                type="text"
+                placeholder="Ex. Arrosage matinal suite à alerte sol sec"
+                value={irrigNote}
+                onChange={(e) => setIrrigNote(e.target.value)}
+              />
+            </div>
+
             <div>
-              <button type="submit" disabled={ajoutCycleEnCours} className="hum-btn-green-sm">
-                {ajoutCycleEnCours ? 'Enregistrement...' : 'Ajouter le cycle'}
+              <button type="submit" disabled={ajoutIrrigEnCours || parcelles.length === 0} className="hum-btn-green-sm">
+                {ajoutIrrigEnCours ? 'Enregistrement...' : 'Enregistrer l’arrosage'}
               </button>
             </div>
           </form>
@@ -693,16 +625,14 @@ export default function Humidite() {
             </button>
           </div>
 
-          {recommandation?.bilan_hebdo && (
-            <div className="hum-bilan-strip">
-              <span>
-                Cumul 7 jours : <strong>{recommandation.bilan_hebdo.volume_litres.toLocaleString('fr-FR')} L</strong> ({recommandation.bilan_hebdo.nb_apports} apports)
-              </span>
-              <span>
-                Efficience : <strong>-{recommandation.bilan_hebdo.economie_estimee_pct} % d&apos;eau</strong> vs arrosage fixe
-              </span>
-            </div>
-          )}
+          <div className="hum-bilan-strip">
+            <span>
+              Cumul 7 jours : <strong>{bilanHebdo.volume_litres.toLocaleString('fr-FR')} L</strong> ({bilanHebdo.nb_apports} apports)
+            </span>
+            <span>
+              Efficience : <strong>-{bilanHebdo.economie_estimee_pct} % d&apos;eau</strong> vs arrosage fixe
+            </span>
+          </div>
 
           <div className="hum-table-wrap">
             <table className="hum-table" style={{ minWidth: '640px' }}>
@@ -712,44 +642,42 @@ export default function Humidite() {
                   <th scope="col">Parcelle</th>
                   <th scope="col">Durée</th>
                   <th scope="col">Volume</th>
-                  <th scope="col">Mode</th>
-                  <th scope="col">Déclencheur</th>
+                  <th scope="col">Méthode</th>
+                  <th scope="col">Humidité avant</th>
                 </tr>
               </thead>
               <tbody>
-                {irrigationsPaginees.length === 0 && (
+                {arrosagesPagines.length === 0 && (
                   <tr>
-                    <td colSpan="6" style={{ color: '#5B6B63' }}>Aucune irrigation enregistrée.</td>
+                    <td colSpan="6" style={{ color: '#5B6B63' }}>Aucun arrosage enregistré.</td>
                   </tr>
                 )}
-                {irrigationsPaginees.map((irr) => {
-                  const p = parcelles.find((item) => item.id === irr.parcelle_id)
-                  const estAuto = (irr.mode || '').toLowerCase().startsWith('auto')
-                  const volumeLitres = (Number(irr.duree_min) || 0) * 60
-
-                  return (
-                    <tr key={irr.id}>
-                      <td className="hum-td-bold">{formaterDate(irr.debut)}</td>
-                      <td>{nomCourtParcelle(p) || `#${irr.parcelle_id}`}</td>
-                      <td>{irr.duree_min} min</td>
-                      <td>{volumeLitres.toLocaleString('fr-FR')} L</td>
-                      <td>
-                        <span className={estAuto ? 'hum-badge-auto' : 'hum-badge-manuel'}>
-                          {estAuto ? 'Automatique' : 'Programmé'}
-                        </span>
-                      </td>
-                      <td>{estAuto ? 'Seuil capteur' : 'Cycle planifié'}</td>
-                    </tr>
-                  )
-                })}
+                {arrosagesPagines.map((a) => (
+                  <tr key={a.id}>
+                    <td className="hum-td-bold">{formaterDate(a.date_arrosage)}</td>
+                    <td>{a.parcelle.replace(/^Parcelle\s+/i, '')}</td>
+                    <td>{a.duree_minutes} min</td>
+                    <td>{Number(a.volume_litres || 0).toLocaleString('fr-FR')} L</td>
+                    <td>
+                      <span className="hum-badge-manuel">{a.methode}</span>
+                    </td>
+                    <td>
+                      {a.humidite_avant != null ? (
+                        <span className="hum-badge-auto">{Math.round(a.humidite_avant)} %</span>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
 
-          {irrigations.length > LIGNES_PAR_PAGE && (
+          {arrosages.length > LIGNES_PAR_PAGE && (
             <div className="hum-pagination">
               <span>
-                Affichage {indexDebutJournal + 1}–{Math.min(indexDebutJournal + LIGNES_PAR_PAGE, irrigations.length)} sur {irrigations.length} irrigations
+                Affichage {indexDebutJournal + 1}–{Math.min(indexDebutJournal + LIGNES_PAR_PAGE, arrosages.length)} sur {arrosages.length} arrosages
               </span>
 
               <div className="hum-page-controls">
