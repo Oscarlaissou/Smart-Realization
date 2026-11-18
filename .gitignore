@@ -20,3 +20,5 @@ backend/training/*.log
 # Fichiers locaux
 .claude/
 backend/uploads/
+.agents/
+.windsurf/
