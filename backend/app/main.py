@@ -54,3 +54,5 @@ for r in (auth, parcelles, equipements, humidite, alertes, fertilisation, camera
 @app.get("/health", tags=["Système"])
 def health():
     return {"status": "ok"}
+
+    demarrer_mqtt()

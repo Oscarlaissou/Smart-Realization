@@ -37,6 +37,13 @@ def _parcelles_filtrees(db: Session, parcelle: str | None, culture: str | None):
     return parcelles, [p.id for p in parcelles]
 
 
+def _litres_irrigation(irr) -> float:
+    vol = getattr(irr, "volume_litres", None)
+    if vol is not None and float(vol) > 0:
+        return float(vol)
+    return float(getattr(irr, "duree_minutes", 0) or 0) * 60.0
+
+
 @router.get("/indicateurs")
 def indicateurs(
     periode: str = Query("30 derniers jours"),
@@ -61,48 +68,50 @@ def indicateurs(
             "evolution": {"Eau": [], "Humidité": [], "Plants": [], "Engrais": []},
         }
 
-    # 1. Requêtes KPI filtrées avec les colonnes exactes
-    q_mesures = db.query(func.avg(Mesure.humidite)).filter(Mesure.parcelle_id.in_(p_ids))
+    # 1. Requêtes KPI filtrées
+    q_mesures = db.query(func.avg(Mesure.valeur)).filter(Mesure.parcelle_id.in_(p_ids))
     q_comptages = db.query(func.sum(Comptage.nb_plants)).filter(Comptage.parcelle_id.in_(p_ids))
     q_apports = db.query(func.count(Apport.id)).filter(Apport.parcelle_id.in_(p_ids), Apport.realise.is_(True))
     q_alertes = db.query(func.count(Alerte.id)).filter(Alerte.parcelle_id.in_(p_ids), Alerte.lue.is_(False))
-    q_irrig_nb = db.query(func.count(Irrigation.id)).filter(Irrigation.parcelle_id.in_(p_ids))
-    q_irrig_vol = db.query(func.sum(Irrigation.duree_min)).filter(Irrigation.parcelle_id.in_(p_ids))
+    q_irrig = db.query(Irrigation).filter(Irrigation.parcelle_id.in_(p_ids))
 
     if date_min:
-        q_mesures = q_mesures.filter(Mesure.horodatage >= date_min)
+        q_mesures = q_mesures.filter(Mesure.enregistre_le >= date_min)
         q_comptages = q_comptages.filter(Comptage.date >= date_min)
         q_apports = q_apports.filter(Apport.date >= date_min)
         q_alertes = q_alertes.filter(Alerte.date >= date_min)
-        q_irrig_nb = q_irrig_nb.filter(Irrigation.debut >= date_min)
-        q_irrig_vol = q_irrig_vol.filter(Irrigation.debut >= date_min)
+        q_irrig = q_irrig.filter(Irrigation.date_arrosage >= date_min)
 
     humidite_moy = q_mesures.scalar() or 0
     plants_comptes = q_comptages.scalar() or 0
     apports_engrais = q_apports.scalar() or 0
     alertes_actives = q_alertes.scalar() or 0
-    irrigations = q_irrig_nb.scalar() or 0
-    eau_m3 = q_irrig_vol.scalar() or 0
+
+    liste_irrigations = q_irrig.order_by(Irrigation.date_arrosage.asc()).all()
+    irrigations = len(liste_irrigations)
+    total_litres = sum(_litres_irrigation(irr) for irr in liste_irrigations)
+    eau_m3 = round(total_litres / 1000.0, 2)
 
     # 2. Détail par parcelle
     liste_parcelles = []
     for p in parcelles_obj:
         derniere = (
-            db.query(Mesure.humidite)
+            db.query(Mesure.valeur)
             .filter(Mesure.parcelle_id == p.id)
-            .order_by(Mesure.horodatage.desc())
+            .order_by(Mesure.enregistre_le.desc())
             .first()
         )
         hum_p = round(float(derniere[0]), 1) if derniere else 0
 
-        q_eau_p = db.query(func.sum(Irrigation.duree_min)).filter(Irrigation.parcelle_id == p.id)
-        if date_min:
-            q_eau_p = q_eau_p.filter(Irrigation.debut >= date_min)
-        eau_p = q_eau_p.scalar() or 0
+        litres_p = sum(_litres_irrigation(irr) for irr in liste_irrigations if irr.parcelle_id == p.id)
+        eau_p_m3 = round(litres_p / 1000.0, 2)
 
-        if hum_p < 30:
+        seuil_min = getattr(p, "seuil_humidite_min", None) or 30.0
+        seuil_max = getattr(p, "seuil_humidite_max", None) or 65.0
+
+        if hum_p < seuil_min:
             statut = "Irrigation"
-        elif hum_p > 45:
+        elif hum_p > seuil_max:
             statut = "Trop humide"
         else:
             statut = "Optimal"
@@ -113,10 +122,10 @@ def indicateurs(
             "culture": ", ".join(c.espece for c in p.cultures) if p.cultures else "—",
             "statut": statut,
             "humidite": hum_p,
-            "eau_m3": round(float(eau_p), 1),
+            "eau_m3": eau_p_m3,
         })
 
-    # 3. Dernières alertes (colonne Alerte.message)
+    # 3. Dernières alertes
     q_liste_alertes = db.query(Alerte).filter(Alerte.parcelle_id.in_(p_ids), Alerte.lue.is_(False))
     if date_min:
         q_liste_alertes = q_liste_alertes.filter(Alerte.date >= date_min)
@@ -136,15 +145,23 @@ def indicateurs(
     total_eq = db.query(func.count(Equipement.id)).scalar() or 0
     en_ligne_eq = db.query(func.count(Equipement.id)).filter(Equipement.en_ligne.is_(True)).scalar() or 0
 
-    # 5. Courbe d'évolution (colonne Mesure.horodatage)
+    # 5. Courbes d'évolution (Humidité MQTT & Eau apportée en m³)
     q_courbe = db.query(Mesure).filter(Mesure.parcelle_id.in_(p_ids))
     if date_min:
-        q_courbe = q_courbe.filter(Mesure.horodatage >= date_min)
-    mesures_courbe = q_courbe.order_by(Mesure.horodatage.desc()).limit(11).all()[::-1]
+        q_courbe = q_courbe.filter(Mesure.enregistre_le >= date_min)
+    mesures_courbe = q_courbe.order_by(Mesure.enregistre_le.desc()).limit(11).all()[::-1]
 
     serie_humidite = [
-        {"date": m.horodatage.strftime("%d %b"), "valeur": round(float(m.humidite), 1)}
+        {"date": m.enregistre_le.strftime("%d %b"), "valeur": round(float(m.valeur), 1)}
         for m in mesures_courbe
+    ]
+
+    serie_eau = [
+        {
+            "date": irr.date_arrosage.strftime("%d %b") if irr.date_arrosage else "—",
+            "valeur": round(_litres_irrigation(irr) / 1000.0, 2),
+        }
+        for irr in liste_irrigations[-11:]
     ]
 
     return {
@@ -153,7 +170,7 @@ def indicateurs(
         "apports_engrais": int(apports_engrais),
         "alertes_actives": int(alertes_actives),
         "irrigations": int(irrigations),
-        "eau_m3": round(float(eau_m3), 1),
+        "eau_m3": eau_m3,
         "domaine": {
             "nom": "Domaine Les Collines",
             "nb_parcelles": len(parcelles_obj),
@@ -167,7 +184,7 @@ def indicateurs(
         "parcelles": liste_parcelles,
         "alertes": liste_alertes,
         "evolution": {
-            "Eau": serie_humidite,
+            "Eau": serie_eau,
             "Humidité": serie_humidite,
             "Plants": serie_humidite,
             "Engrais": serie_humidite,
