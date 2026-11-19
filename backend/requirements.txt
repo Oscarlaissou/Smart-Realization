@@ -8,6 +8,6 @@ PyJWT==2.9.0
 paho-mqtt==2.1.0
 python-multipart==0.0.12
 pytest==8.3.3
-httpx==0.27.2
-ultralytics 
-opencv-python-headless
+httpx==0.28.1
+ultralytics==8.4.215          # installe aussi PyTorch (version CPU sous Windows)
+opencv-python-headless==5.1.0.95
