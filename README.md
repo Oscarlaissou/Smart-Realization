@@ -1,7 +1,8 @@
-<<<<<<< HEAD
 # Sevia – Optimisation des ressources des plantations
 
-Architecture : **front React (Vue MVC)** ⇄ **API FastAPI (Contrôleurs + Services + Modèles)** ⇄ **PostgreSQL**, avec **ESP32** → **MQTT** → API.
+Application web d'optimisation des ressources des plantations agricoles pour un développement durable (Smart-Realization).
+
+Architecture : **front React (Vue MVC)** ⇄ **API FastAPI (Contrôleurs + Services + Modèles)** ⇄ **Supabase (PostgreSQL hébergé)**, avec **ESP32** → **MQTT** → API.
 
 ```
 backend/app/
@@ -18,13 +19,14 @@ docs/REPARTITION.md  qui fait quoi
 
 ## Installation (une seule fois)
 
-Pré-requis : Git, Python 3.11+, Node.js LTS, Docker Desktop, VS Code.
+Pré-requis : Git, Python 3.11+, Node.js LTS, VS Code, et l'accès au projet Supabase de l'équipe.
+Docker n'est utile que pour un broker MQTT local (facultatif) : la base est sur Supabase, il n'y a pas de base locale.
 
 ```bash
 git clone <URL_DU_DEPOT> sevia && cd sevia
 
-# 1. Base de données + broker MQTT
-docker compose up -d
+# 1. Configuration : copier backend/.env.example en backend/.env, puis y coller
+#    l'URL de connexion Supabase (DATABASE_URL) et les clés Supabase
 
 # 2. Back-end
 cd backend
@@ -52,7 +54,3 @@ Avant de coder, lire `docs/REPARTITION.md` (tâches de chacun).
 ## Pour avancer sur une fonctionnalité
 Branche → travailler uniquement dans le dossier `features/<nom>` de la fonctionnalité (service, routeur, puis page React) → test → pull request.
 Les `TODO` dans le code indiquent où continuer.
-=======
-# Smart-Realization
-Application web d'optimisation des ressources des plantations agricoles pour un développement durable
->>>>>>> fd266c2e9b2664f198f0da1550391c01d3d418e0
