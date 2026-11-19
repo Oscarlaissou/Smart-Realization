@@ -1,18 +1,43 @@
-import os
-os.environ["DATABASE_URL"] = "sqlite:///./test.db"
+﻿import os
+import uuid
+
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
+
 from fastapi.testclient import TestClient
+
 from app.main import app
 
+
 def test_parcours_complet():
+    suffixe = uuid.uuid4().hex[:8]
     with TestClient(app) as c:
         assert c.get("/health").json() == {"status": "ok"}
-        c.post("/auth/register", json={"nom": "Oscar", "email": "o@sevia.cm", "mot_de_passe": "secret123"})
-        t = c.post("/auth/login", data={"username": "o@sevia.cm", "password": "secret123"}).json()["access_token"]
-        h = {"Authorization": f"Bearer {t}"}
-        e = c.post("/exploitations", json={"nom": "Domaine Les Collines"}, headers=h).json()
-        p = c.post("/parcelles", json={"nom": "Sud", "surface_ha": 2, "exploitation_id": e["id"]}, headers=h).json()
+        inscription = c.post(
+            "/auth/inscription",
+            json={
+                "nom": "Oscar",
+                "email": f"o-{suffixe}@sevia.cm",
+                "nom_exploitation": "Domaine Les Collines",
+                "mot_de_passe": "secret123",
+            },
+        )
+        assert inscription.status_code == 201, inscription.text
+        token = inscription.json()["access_token"]
+        h = {"Authorization": f"Bearer {token}"}
+
+        e = c.post(
+            "/exploitations",
+            json={"nom": "Domaine Les Collines Bis"},
+            headers=h,
+        ).json()
+        p = c.post(
+            "/parcelles",
+            json={"nom": "Sud", "surface_ha": 2, "exploitation_id": e["id"]},
+            headers=h,
+        ).json()
         c.post("/humidite/mesures", json={"parcelle_id": p["id"], "humidite": 22})
         assert len(c.get("/alertes", headers=h).json()) == 1      # sol sec => alerte
         c.post("/fertilisation/donnees", json={"parcelle_id": p["id"], "azote": 20}, headers=h)
         assert c.get(f"/fertilisation/dose/{p['id']}", headers=h).json()["azote_kg_ha"] == 100
         assert c.get("/dashboard/indicateurs", headers=h).json()["alertes_actives"] == 1
+

@@ -1,3 +1,5 @@
+import { changerLangue } from '../i18n/index.js'
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 
 export function lireToken() {
@@ -59,6 +61,7 @@ export async function connexion(email, motDePasse) {
     body: JSON.stringify({ email, mot_de_passe: motDePasse }),
   })
   enregistrerSession(data.access_token, data.utilisateur)
+  if (data.utilisateur?.langue) changerLangue(data.utilisateur.langue)
   return data
 }
 
