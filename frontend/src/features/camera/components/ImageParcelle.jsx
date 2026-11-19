@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { urlImage } from '../api.js'
 
 // Image d'un comptage, avec un message si elle n'est plus accessible (supprimée, réseau, etc.)
-export default function ImageParcelle({ src, alt }) {
+export default function ImageParcelle({ src, alt, parcelle }) {
   const [erreur, setErreur] = useState(false)
 
   useEffect(() => setErreur(false), [src])
@@ -15,5 +15,10 @@ export default function ImageParcelle({ src, alt }) {
     )
   }
 
-  return <img className="cam-image" src={urlImage(src)} alt={alt} onError={() => setErreur(true)} />
+  return (
+    <div className="cam-image-cadre">
+      <img className="cam-image" src={urlImage(src)} alt={alt} onError={() => setErreur(true)} />
+      {parcelle && <span className="cam-image-parcelle">Parcelle : {parcelle}</span>}
+    </div>
+  )
 }

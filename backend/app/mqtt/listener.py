@@ -1,12 +1,9 @@
 import json
 import uuid
-from datetime import datetime
 import paho.mqtt.client as mqtt
 from ..core.config import settings
 from ..core.database import SessionLocal
-from ..features.parcelles.models import Parcelle
-from ..features.humidite.models import MesureHumidite
-from ..features.equipements.models import Equipement
+from ..features.parcelles.models import Exploitation, Parcelle
 
 _client = None
 
@@ -15,11 +12,12 @@ def _extraire_mesure(topic: str, payload_str: str) -> tuple[int | None, float | 
     parcelle_id = None
     valeur = None
 
+    # Topics acceptés : sevia/parcelle/<id>/humidite (firmware ESP32) et sevia/parcelles/<id>/humidite
     morceaux = topic.split("/")
-    if "parcelles" in morceaux:
-        idx = morceaux.index("parcelles")
-        if idx + 1 < len(morceaux) and morceaux[idx + 1].isdigit():
+    for idx, morceau in enumerate(morceaux[:-1]):
+        if morceau in ("parcelle", "parcelles") and morceaux[idx + 1].isdigit():
             parcelle_id = int(morceaux[idx + 1])
+            break
 
     try:
         data = json.loads(payload_str)
@@ -64,33 +62,25 @@ def on_message(client, userdata, msg):
 
     db = SessionLocal()
     try:
-        parcelle = db.query(Parcelle).filter(Parcelle.id == parcelle_id).first()
+        # Parcelle + propriétaire en une seule requête (chaque aller-retour Supabase coûte ~1 s)
+        ligne = (
+            db.query(Parcelle, Exploitation.user_id)
+            .outerjoin(Exploitation, Parcelle.exploitation_id == Exploitation.id)
+            .filter(Parcelle.id == parcelle_id)
+            .first()
+        )
+        parcelle, proprietaire = ligne if ligne else (None, None)
         if not parcelle:
-            dispos = [(p.id, p.nom) for p in db.query(Parcelle).all()]
-            print(f"[MQTT] Parcelle #{parcelle_id} introuvable. IDs en base : {dispos}", flush=True)
+            print(f"[MQTT] Parcelle #{parcelle_id} introuvable : mesure ignorée.", flush=True)
             return
 
-        db.add(MesureHumidite(parcelle_id=parcelle_id, valeur=valeur))
-        # Capteurs de la parcelle marqués « vivants » (statut en ligne, voir equipements/router.py).
-        # Le payload ne dit pas quel capteur a envoyé la mesure : on met à jour tous ceux de la parcelle.
-        for capteur in (
-            db.query(Equipement)
-            .filter(Equipement.parcelle_id == parcelle_id, Equipement.type == "capteur")
-            .all()
-        ):
-            capteur.derniere_donnee = datetime.utcnow()
-        db.commit()
-        print(f"[MQTT] Enregistré : {parcelle.nom} (#{parcelle_id}) -> {valeur} %", flush=True)
+        # Point d'entrée unique : mesure + statut des capteurs + alertes de seuil + diffusion en direct
+        from ..features.humidite.mesures import enregistrer_mesure
 
-        # Règles d'alerte (sol sec / excès d'eau, anti-doublon, notifications) : module Alertes
-        try:
-            from ..features.alertes import service as alerte_service
-
-            if alerte_service.verifier_humidite(db, parcelle, valeur):
-                print(f"[MQTT] Alerte créée pour {parcelle.nom}.", flush=True)
-        except Exception as err_alerte:
-            db.rollback()
-            print(f"[MQTT] Erreur création alerte : {err_alerte}", flush=True)
+        evenement = enregistrer_mesure(db, parcelle, valeur, user_id=proprietaire)
+        print(f"[MQTT] Enregistré : {evenement['parcelle']} (#{parcelle_id}) -> {valeur} %", flush=True)
+        if evenement["alerte"]:
+            print(f"[MQTT] Alerte créée pour {evenement['parcelle']} : {evenement['alerte']['message']}", flush=True)
     except Exception as e:
         db.rollback()
         print(f"[MQTT] Erreur SQL : {e}", flush=True)

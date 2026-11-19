@@ -25,6 +25,8 @@ function normaliser(texte = '') {
     .trim()
 }
 
+const ALERTES_PAR_PAGE = 5
+
 export default function Alertes() {
   const { t } = useTranslation()
   const [alertes, setAlertes] = useState([])
@@ -36,6 +38,7 @@ export default function Alertes() {
   const [enCours, setEnCours] = useState(false)
   const [erreur, setErreur] = useState('')
   const [succes, setSucces] = useState('')
+  const [page, setPage] = useState(1)
 
   const charger = useCallback(async () => {
     setChargement(true)
@@ -79,6 +82,19 @@ export default function Alertes() {
       )
     })
   }, [alertes, filtre, recherche])
+
+  // Pagination : ALERTES_PAR_PAGE alertes par page
+  const nombrePages = Math.max(1, Math.ceil(alertesAffichees.length / ALERTES_PAR_PAGE))
+  const pageCourante = Math.min(page, nombrePages)
+  const alertesDeLaPage = alertesAffichees.slice(
+    (pageCourante - 1) * ALERTES_PAR_PAGE,
+    pageCourante * ALERTES_PAR_PAGE,
+  )
+
+  // Nouveau filtre ou nouvelle recherche : retour à la première page
+  useEffect(() => {
+    setPage(1)
+  }, [filtre, recherche])
 
   const compterCategorie = (categorie) =>
     categorie === 'toutes'
@@ -159,6 +175,7 @@ export default function Alertes() {
         telephone: profil.telephone,
         role: profil.role,
         langue: profil.langue,
+        email_alertes: (profil.email_alertes || '').trim() || null,
       })
       setPreferences(resultat || preferences)
       setProfil(profilMisAJour)
@@ -238,7 +255,7 @@ export default function Alertes() {
             {alertesAffichees.length === 0 && (
               <li className="texte-discret">{t('alertes.aucuneAlerte')}</li>
             )}
-            {alertesAffichees.map((alerte) => (
+            {alertesDeLaPage.map((alerte) => (
               <CarteAlerte
                 key={alerte.id}
                 alerte={alerte}
@@ -248,6 +265,30 @@ export default function Alertes() {
               />
             ))}
           </ul>
+
+          {nombrePages > 1 && (
+            <div role="navigation" className="alertes-pagination" aria-label={t('alertes.pagination')}>
+              <button
+                type="button"
+                className="bouton-secondaire"
+                disabled={pageCourante === 1}
+                onClick={() => setPage(pageCourante - 1)}
+              >
+                {t('alertes.pagePrecedente')}
+              </button>
+              <span aria-live="polite">
+                {t('alertes.pageSur', { page: pageCourante, total: nombrePages })}
+              </span>
+              <button
+                type="button"
+                className="bouton-secondaire"
+                disabled={pageCourante === nombrePages}
+                onClick={() => setPage(pageCourante + 1)}
+              >
+                {t('alertes.pageSuivante')}
+              </button>
+            </div>
+          )}
         </section>
 
         <PreferencesAlertes

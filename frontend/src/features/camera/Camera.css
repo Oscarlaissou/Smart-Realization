@@ -263,3 +263,30 @@
   color: #12201A;
   width: 100%;
 }
+/* ---------- Parcelle de l'image ---------- */
+.cam-image-cadre { position: relative; }
+
+.cam-image-parcelle {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  max-width: calc(100% - 20px);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(15, 42, 30, 0.85);
+  color: #FFFFFF;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cam-envoi {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.cam-envoi .cam-field { min-width: 180px; }

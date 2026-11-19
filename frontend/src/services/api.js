@@ -18,6 +18,23 @@ export function deconnexion() {
   localStorage.removeItem('utilisateur')
 }
 
+// FastAPI renvoie soit un texte, soit (erreur de validation 422) une liste d'erreurs par champ
+export function messageErreur(detail) {
+  if (!detail) return ''
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail
+      .map((e) => {
+        const champ = Array.isArray(e?.loc) ? e.loc[e.loc.length - 1] : ''
+        const msg = (e?.msg || '').replace(/^Value error, /, '')
+        return champ ? `${champ} : ${msg}` : msg
+      })
+      .filter(Boolean)
+      .join(' · ')
+  }
+  return detail.message || JSON.stringify(detail)
+}
+
 export async function api(chemin, options = {}) {
   const token = lireToken()
   const controller = new AbortController()
@@ -41,7 +58,7 @@ export async function api(chemin, options = {}) {
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
-      throw new Error(err.detail || `Erreur serveur (${res.status})`)
+      throw new Error(messageErreur(err.detail) || `Erreur serveur (${res.status})`)
     }
 
     return res.status === 204 ? null : res.json()

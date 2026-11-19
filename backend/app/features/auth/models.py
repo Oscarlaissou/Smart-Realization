@@ -14,4 +14,6 @@ class User(Base):
     role: Mapped[str] = mapped_column(String(80), default="Exploitant agricole")
     langue: Mapped[str] = mapped_column(String(10), default="fr", nullable=False)
     mot_de_passe_hash: Mapped[str] = mapped_column(String(255))
+    # Adresse saisie dans la page Alertes : chaque alerte y est envoyée par e-mail (facultative)
+    email_alertes: Mapped[str | None] = mapped_column(String(180), nullable=True, default=None)
     cree_le: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

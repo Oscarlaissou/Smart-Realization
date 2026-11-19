@@ -67,23 +67,31 @@ textarea {
   min-height: 100vh;
 }
 
+/* Menu latéral fixé sur la hauteur de l'écran : le domaine et « Se déconnecter »
+   restent toujours visibles, seule la page défile. */
 nav {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
   width: 256px;
   flex-shrink: 0;
   background: #0F2A1E;
-  min-height: 100vh;
-  padding: 28px 18px;
+  height: 100vh;
+  height: 100dvh;
+  padding: 24px 18px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: 28px;
+  gap: 16px;
+  overflow: hidden;
 }
 
 .nav-top {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 24px;
+  min-height: 0;
 }
 
 .nav-brand {
@@ -541,6 +549,26 @@ button:disabled {
   border: 1px solid #FFFFFF;
 }
 
+/* Écrans peu hauts (portables 768 px, fenêtres réduites) : menu plus compact */
+@media (max-height: 800px) {
+  nav { padding: 18px 16px; gap: 12px; }
+  .nav-top { gap: 16px; }
+  .nav-logo { width: 34px; height: 34px; }
+  .nav-brand-name { font-size: 22px; }
+  nav a { height: 38px; }
+  .nav-links { gap: 2px; }
+  .nav-bottom { gap: 10px; }
+  .nav-farm-card { padding: 12px 14px; }
+}
+
+@media (max-height: 640px) {
+  nav { padding: 12px 14px; }
+  .nav-top { gap: 10px; }
+  nav a { height: 32px; font-size: 14px; }
+  .nav-farm-card { padding: 8px 12px; }
+  .nav-farm-sub { display: none; }
+}
+
 @media (max-width: 1100px) {
   main {
     padding: 24px;
@@ -561,6 +589,10 @@ button:disabled {
   }
 
   nav.app-nav {
+    position: static;
+    align-self: stretch;
+    height: auto;
+    overflow: visible;
     width: 100%;
     min-height: auto;
     padding: 14px 18px;
@@ -616,4 +648,62 @@ button:disabled {
   .app-entete-actions {
     gap: 8px;
   }
+}
+
+
+/* ---------- Popup d'alerte en direct (toutes les pages) ---------- */
+.alertes-direct {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(360px, calc(100vw - 32px));
+}
+
+.alerte-popup {
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #FFFFFF;
+  border: 1px solid #F3C2C2;
+  border-left: 6px solid #C62828;
+  box-shadow: 0 12px 32px rgba(15, 42, 30, 0.18);
+  color: #12201A;
+  animation: alerte-entree 0.25s ease-out;
+}
+
+.alerte-popup.niveau-attention { border-color: #F2D6A2; border-left-color: #C77700; }
+
+.alerte-popup-entete {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.alerte-popup-entete strong { flex: 1; color: #8F1F1F; }
+.alerte-popup.niveau-attention .alerte-popup-entete strong { color: #8A5A00; }
+.alerte-popup-entete span { font-size: 12px; color: #5B6B63; }
+
+.alerte-popup-entete button {
+  border: 0;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  color: #5B6B63;
+  cursor: pointer;
+}
+
+.alerte-popup p { margin: 6px 0 8px; font-size: 14px; line-height: 1.45; }
+.alerte-popup-lien { font-size: 13px; font-weight: 600; color: #14683F; }
+
+@keyframes alerte-entree {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alerte-popup { animation: none; }
 }

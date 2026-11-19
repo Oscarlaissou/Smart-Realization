@@ -17,10 +17,8 @@ from .features.dashboard import router as dashboard
 
 app = FastAPI(title="Sevia API", version="0.1.0")
 
-ORIGINS = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-]
+# Origines autorisées (front) : CORS_ORIGINS dans backend/.env, séparées par des virgules
+ORIGINS = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
 
 app.add_middleware(
     CORSMiddleware,
@@ -44,7 +42,12 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 @app.on_event("startup")
 def startup():
+    # Ferme les flux temps réel à l'arrêt, sinon Ctrl+C / --reload restent bloqués
+    from .core.temps_reel import installer_arret_sur_signal
+    installer_arret_sur_signal()
     Base.metadata.create_all(engine)
+    from .core.database import appliquer_migrations_legeres
+    appliquer_migrations_legeres()
     if settings.MQTT_ENABLED:
         from .mqtt import listener
         listener.demarrer()

@@ -71,14 +71,26 @@ def ajouter(d: EquipementIn, db: Session = Depends(get_db), user: User = Depends
     e = Equipement(**d.model_dump(), exploitation_id=exploitation_id)
     db.add(e); db.commit(); db.refresh(e); return _vers_sortie(e)
 
-@router.put("/{eid}", response_model=EquipementOut)
-def modifier(eid: int, d: EquipementIn, db: Session = Depends(get_db)):
+def _equipement_de(db: Session, eid: int, user: User) -> Equipement:
+    """L'équipement s'il appartient à une exploitation de l'utilisateur, sinon 404."""
     e = db.get(Equipement, eid)
-    if not e: raise HTTPException(404, "Équipement introuvable")
+    if not e or e.exploitation_id not in _ids_exploitations(db, user):
+        raise HTTPException(404, "Équipement introuvable")
+    return e
+
+
+@router.put("/{eid}", response_model=EquipementOut)
+def modifier(eid: int, d: EquipementIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    e = _equipement_de(db, eid, user)
+    if d.parcelle_id is not None:
+        parcelle = db.get(Parcelle, d.parcelle_id)
+        if not parcelle or parcelle.exploitation_id not in _ids_exploitations(db, user):
+            raise HTTPException(404, "Parcelle introuvable")
+        e.exploitation_id = parcelle.exploitation_id
     for k, v in d.model_dump().items(): setattr(e, k, v)
     db.commit(); db.refresh(e); return _vers_sortie(e)
 
 @router.delete("/{eid}", status_code=204)
-def supprimer(eid: int, db: Session = Depends(get_db)):
-    e = db.get(Equipement, eid)
-    if e: db.delete(e); db.commit()
+def supprimer(eid: int, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    e = _equipement_de(db, eid, user)
+    db.delete(e); db.commit()

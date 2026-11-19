@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import smtplib
+import threading
 import unicodedata
 from datetime import datetime, timedelta
 from email.message import EmailMessage
@@ -16,7 +17,19 @@ from ..parcelles.models import Exploitation, Parcelle
 
 logger = logging.getLogger(__name__)
 
-SEUIL_MIN, SEUIL_MAX = 30, 45
+# Seuils d'humidité par défaut (%), quand la parcelle n'a pas ses propres seuils.
+# SOURCE UNIQUE : alertes, page Humidité et tableau de bord passent tous par seuils_humidite().
+SEUIL_MIN, SEUIL_MAX = 30.0, 65.0
+
+
+def seuils_humidite(parcelle: Parcelle) -> tuple[float, float]:
+    """(min, max) de la parcelle (réglés depuis la page Humidité), sinon les valeurs par défaut."""
+    seuil_min = getattr(parcelle, "seuil_humidite_min", None)
+    seuil_max = getattr(parcelle, "seuil_humidite_max", None)
+    return (
+        SEUIL_MIN if seuil_min is None else float(seuil_min),
+        SEUIL_MAX if seuil_max is None else float(seuil_max),
+    )
 
 CATEGORIES = {
     "secheresse": "Sécheresse",
@@ -101,8 +114,14 @@ def creer_alerte(
     return alerte
 
 
+def _en_arriere_plan(fonction, *args) -> None:
+    """L'envoi SMTP/SMS prend plusieurs secondes : il ne doit retarder ni la mesure ni la page."""
+    threading.Thread(target=fonction, args=args, daemon=True).start()
+
+
 def verifier_humidite(db: Session, parcelle: Parcelle, humidite: float) -> Alerte | None:
-    if humidite < SEUIL_MIN:
+    seuil_min, seuil_max = seuils_humidite(parcelle)
+    if humidite < seuil_min:
         return creer_alerte(
             db,
             parcelle,
@@ -110,7 +129,7 @@ def verifier_humidite(db: Session, parcelle: Parcelle, humidite: float) -> Alert
             "urgent",
             f"Sol sec · {parcelle.nom} ({humidite:.0f} %)",
         )
-    if humidite > SEUIL_MAX:
+    if humidite > seuil_max:
         return creer_alerte(
             db,
             parcelle,
@@ -238,48 +257,107 @@ def envoyer_notifications(db: Session, alerte: Alerte, parcelle: Parcelle | None
         return
 
     categorie = categorie_depuis_message(alerte.message)
-    preference = preference_pour(db, utilisateur.id, categorie)
-    if not preference:
-        return
 
-    if preference.email and settings.NOTIFICATIONS_EMAIL_ACTIVES:
-        envoyer_email(
-            utilisateur.email,
-            f"Alerte Sevia · {CATEGORIES.get(categorie, 'Information')}",
-            f"{alerte.message}\n\nNiveau : {alerte.niveau}\nParcelle : {parcelle.nom}",
+    # 1. Signalement en direct : popup sur toutes les pages ouvertes du propriétaire
+    from ...core import temps_reel
+
+    temps_reel.publier(utilisateur.id, {
+        "type": "alerte",
+        "parcelle_id": parcelle.id,
+        "parcelle": parcelle.nom,
+        "alerte": {
+            "id": alerte.id,
+            "niveau": alerte.niveau,
+            "message": alerte.message,
+            "categorie": categorie,
+            "date": alerte.date.isoformat() if alerte.date else None,
+        },
+    })
+
+    # 2. E-mail à CHAQUE alerte, à l'adresse saisie dans la page Alertes (s'il y en a une)
+    if utilisateur.email_alertes and settings.NOTIFICATIONS_EMAIL_ACTIVES:
+        _en_arriere_plan(
+            envoyer_email,
+            utilisateur.email_alertes,
+            f"Alerte Sevia · {CATEGORIES.get(categorie, 'Information')} · {parcelle.nom}",
+            f"{alerte.message}\n\nNiveau : {alerte.niveau}\nParcelle : {parcelle.nom}\n"
+            f"Date : {alerte.date:%d/%m/%Y %H:%M} (UTC)\n\n— Sevia",
         )
 
-    if preference.sms and settings.NOTIFICATIONS_SMS_ACTIVES and utilisateur.telephone:
-        envoyer_sms(utilisateur.telephone, f"Sevia : {alerte.message}")
+    # 3. SMS : selon les préférences par type d'alerte
+    preference = preference_pour(db, utilisateur.id, categorie)
+    if preference and preference.sms and settings.NOTIFICATIONS_SMS_ACTIVES and utilisateur.telephone:
+        _en_arriere_plan(envoyer_sms, utilisateur.telephone, f"Sevia : {alerte.message}")
 
 
-def envoyer_email(destinataire: str, sujet: str, contenu: str) -> bool:
-    if not settings.SMTP_HOST or not destinataire:
-        return False
+AIDE_IDENTIFIANTS = (
+    "Le serveur e-mail refuse l'identifiant ou le mot de passe (SMTP_USER / SMTP_PASSWORD). "
+    "Avec Gmail : activez la validation en deux étapes, créez un « mot de passe d'application » "
+    "et mettez-le dans SMTP_PASSWORD, avec la MÊME adresse Gmail dans SMTP_USER."
+)
+
+
+def _identifiants_smtp() -> tuple[str, str]:
+    utilisateur = (settings.SMTP_USER or "").strip()
+    mot_de_passe = settings.SMTP_PASSWORD or ""
+    if "gmail" in (settings.SMTP_HOST or "").lower():
+        # Google affiche le mot de passe d'application en 4 blocs « abcd efgh ijkl mnop »
+        mot_de_passe = mot_de_passe.replace(" ", "")
+    return utilisateur, mot_de_passe
+
+
+def _connexion(smtp: smtplib.SMTP) -> None:
+    utilisateur, mot_de_passe = _identifiants_smtp()
+    if not utilisateur:
+        return
+    smtp.ehlo()
+    if "auth" in smtp.esmtp_features and "LOGIN" in smtp.esmtp_features["auth"].upper():
+        # AUTH LOGIN : en cas de refus, le serveur répond « 535 » au lieu de couper la connexion
+        smtp.esmtp_features["auth"] = "LOGIN"
+    smtp.login(utilisateur, mot_de_passe)
+
+
+def envoyer_email_detail(destinataire: str, sujet: str, contenu: str) -> tuple[bool, str | None]:
+    """Envoie l'e-mail. Renvoie (True, None) ou (False, raison lisible par l'utilisateur)."""
+    if not destinataire:
+        return False, "Aucune adresse de destination."
+    if not settings.SMTP_HOST:
+        return False, "SMTP non configuré : renseignez SMTP_HOST dans backend/.env."
 
     message = EmailMessage()
-    message["From"] = settings.SMTP_FROM
+    message["From"] = settings.SMTP_FROM or (settings.SMTP_USER or "").strip()
     message["To"] = destinataire
     message["Subject"] = sujet
     message.set_content(contenu)
 
     try:
         if settings.SMTP_PORT == 465:
-            with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as smtp:
-                if settings.SMTP_USER:
-                    smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            with smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as smtp:
+                _connexion(smtp)
                 smtp.send_message(message)
         else:
-            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=10) as smtp:
+            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as smtp:
                 if settings.SMTP_USE_TLS:
                     smtp.starttls()
-                if settings.SMTP_USER:
-                    smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+                _connexion(smtp)
                 smtp.send_message(message)
-        return True
-    except Exception:
-        logger.exception("Échec de l'envoi de l'e-mail d'alerte à %s", destinataire)
-        return False
+        return True, None
+    except smtplib.SMTPAuthenticationError as erreur:
+        raison = f"{AIDE_IDENTIFIANTS} (code {erreur.smtp_code})"
+    except smtplib.SMTPServerDisconnected:
+        raison = f"Le serveur e-mail a coupé la connexion. {AIDE_IDENTIFIANTS}"
+    except smtplib.SMTPRecipientsRefused:
+        raison = f"Adresse de destination refusée par le serveur : {destinataire}"
+    except (OSError, smtplib.SMTPConnectError) as erreur:
+        raison = f"Serveur e-mail injoignable ({settings.SMTP_HOST}:{settings.SMTP_PORT}) : {erreur}"
+    except smtplib.SMTPException as erreur:
+        raison = f"Erreur du serveur e-mail : {erreur}"
+    logger.error("E-mail non envoyé à %s : %s", destinataire, raison)
+    return False, raison
+
+
+def envoyer_email(destinataire: str, sujet: str, contenu: str) -> bool:
+    return envoyer_email_detail(destinataire, sujet, contenu)[0]
 
 
 def envoyer_sms(destinataire: str, contenu: str) -> bool:

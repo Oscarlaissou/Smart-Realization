@@ -1,5 +1,5 @@
 // Appels API de la fonctionnalité « camera » (utiliser api() de ../../services/api.js)
-import { api, lireToken, deconnexion } from '../../services/api.js'
+import { api, lireToken, deconnexion, messageErreur } from '../../services/api.js'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
 
@@ -35,7 +35,7 @@ export async function envoyerImage(pid, fichier) {
     }
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
-      throw new Error(err.detail || `Erreur serveur (${res.status})`)
+      throw new Error(messageErreur(err.detail) || `Erreur serveur (${res.status})`)
     }
     return res.json()
   } catch (err) {

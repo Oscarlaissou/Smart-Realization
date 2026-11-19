@@ -21,6 +21,8 @@ function utilisateurConnecte() {
 export default function Camera() {
   const [parcelles, setParcelles] = useState([])
   const [parcelleId, setParcelleId] = useState(null)
+  // Parcelle à laquelle appartient l'image envoyée (choisie explicitement avant l'envoi)
+  const [parcelleImageId, setParcelleImageId] = useState(null)
   const [comptages, setComptages] = useState([])
   const [recherche, setRecherche] = useState('')
   const [vue, setVue] = useState('detections')   // 'detections' | 'originale'
@@ -76,6 +78,11 @@ export default function Camera() {
     }
   }, [parcelleId])
 
+  // La parcelle de l'image suit la parcelle affichée, mais peut être changée avant l'envoi
+  useEffect(() => {
+    setParcelleImageId(parcelleId)
+  }, [parcelleId])
+
   const choisirParcelle = (id) => {
     setParcelleId(id)
     setInfo('')
@@ -86,7 +93,7 @@ export default function Camera() {
   const surFichierChoisi = async (e) => {
     const fichier = e.target.files?.[0]
     e.target.value = ''   // permet de re-choisir le même fichier ensuite
-    if (!fichier || parcelleId == null) return
+    if (!fichier || parcelleImageId == null) return
 
     setErreur('')
     setInfo('')
@@ -101,9 +108,14 @@ export default function Camera() {
 
     setEnvoi(true)
     try {
-      const comptage = await envoyerImage(parcelleId, fichier)
-      await chargerComptages(parcelleId)
-      setInfo(`Image analysée : ${nombre(comptage.nb_plants)} plants détectés.`)
+      const cible = parcelles.find((p) => p.id === parcelleImageId)
+      const comptage = await envoyerImage(parcelleImageId, fichier)
+      if (parcelleImageId === parcelleId) {
+        await chargerComptages(parcelleId)
+      } else {
+        setParcelleId(parcelleImageId)   // affiche la parcelle de l'image qui vient d'être analysée
+      }
+      setInfo(`Image de la parcelle « ${cible?.nom || parcelleImageId} » analysée : ${nombre(comptage.nb_plants)} plants détectés.`)
     } catch (err) {
       setErreur(err.message || "Impossible d'envoyer l'image.")
     } finally {
@@ -216,15 +228,34 @@ export default function Camera() {
               </div>
 
               {dernier ? (
-                <ImageParcelle src={srcDerniere} alt={`Dernière image de la parcelle ${parcelle?.nom || ''}`} />
+                <ImageParcelle src={srcDerniere} alt={`Dernière image de la parcelle ${parcelle?.nom || ''}`} parcelle={parcelle?.nom} />
               ) : (
                 <div className="cam-image cam-image-vide">{chargement ? 'Chargement…' : "Aucune image pour l'instant"}</div>
               )}
 
               <div className="cam-card-foot">
                 <span className="cam-legende">
-                  {dernier ? `${dateHeure(dernier.date)} · ${nombre(dernier.nb_plants)} plants détectés` : 'Chargez une image pour lancer le comptage.'}
+                  {dernier
+                    ? `${parcelle?.nom || ''} · ${dateHeure(dernier.date)} · ${nombre(dernier.nb_plants)} plants détectés`
+                    : 'Chargez une image pour lancer le comptage.'}
                 </span>
+
+                <div className="cam-envoi">
+                  <div className="cam-field">
+                    <label htmlFor="cam-parcelle-image">Parcelle de l&apos;image</label>
+                    <select
+                      id="cam-parcelle-image"
+                      value={parcelleImageId ?? ''}
+                      disabled={envoi}
+                      onChange={(e) => setParcelleImageId(Number(e.target.value))}
+                    >
+                      {parcelles.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.nom}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
                 <input
                   ref={champFichier}
@@ -236,7 +267,7 @@ export default function Camera() {
                 <button
                   type="button"
                   className="cam-btn"
-                  disabled={envoi || parcelleId == null}
+                  disabled={envoi || parcelleImageId == null}
                   onClick={() => champFichier.current?.click()}
                 >
                   <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -244,6 +275,7 @@ export default function Camera() {
                   </svg>
                   {envoi ? 'Analyse…' : 'Charger une image'}
                 </button>
+                </div>
               </div>
             </section>
 
@@ -274,7 +306,7 @@ export default function Camera() {
 
             <section className="cam-card cam-col-b">
               <h2 className="cam-card-title">Comparer les images par date</h2>
-              <ComparaisonDates comptages={comptages} />
+              <ComparaisonDates comptages={comptages} nomParcelle={parcelle?.nom} />
             </section>
           </div>
         </>

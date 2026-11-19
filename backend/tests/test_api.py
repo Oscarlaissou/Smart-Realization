@@ -1,4 +1,4 @@
-﻿import os
+import os
 import uuid
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
@@ -35,9 +35,9 @@ def test_parcours_complet():
             json={"nom": "Sud", "surface_ha": 2, "exploitation_id": e["id"]},
             headers=h,
         ).json()
-        c.post("/humidite/mesures", json={"parcelle_id": p["id"], "humidite": 22})
+        c.post("/humidite/mesures", json={"parcelle_id": p["id"], "humidite": 22}, headers=h)
         assert len(c.get("/alertes", headers=h).json()) == 1      # sol sec => alerte
         c.post("/fertilisation/donnees", json={"parcelle_id": p["id"], "azote": 20}, headers=h)
-        assert c.get(f"/fertilisation/dose/{p['id']}", headers=h).json()["azote_kg_ha"] == 100
+        assert c.get(f"/fertilisation/dose/{p['id']}", headers=h).json()["besoins_kg_ha"]["azote_kg_ha"] == 100
         assert c.get("/dashboard/indicateurs", headers=h).json()["alertes_actives"] == 1
 

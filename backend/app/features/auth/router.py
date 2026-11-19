@@ -40,6 +40,7 @@ def _utilisateur_json(utilisateur: User) -> dict:
         "telephone": utilisateur.telephone,
         "role": utilisateur.role,
         "langue": utilisateur.langue,
+        "email_alertes": utilisateur.email_alertes,
     }
 
 
@@ -124,6 +125,8 @@ def modifier_profil(
     user.telephone = donnees.telephone
     user.role = donnees.role
     user.langue = donnees.langue
+    if "email_alertes" in donnees.model_fields_set:   # la page Paramètres ne l'envoie pas : on garde
+        user.email_alertes = donnees.email_alertes
     db.commit()
     db.refresh(user)
     return _utilisateur_json(user)

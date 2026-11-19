@@ -53,6 +53,23 @@ class Base(DeclarativeBase):
     pass
 
 
+# Colonnes ajoutées après la création des tables : create_all() ne les ajoute pas à une table
+# qui existe déjà. Chaque instruction est idempotente (IF NOT EXISTS) et sans perte de données.
+MIGRATIONS_LEGERES = [
+    "ALTER TABLE users ADD COLUMN IF NOT EXISTS email_alertes VARCHAR(180)",
+]
+
+
+def appliquer_migrations_legeres() -> None:
+    if engine.dialect.name != "postgresql":
+        return   # base de test en mémoire : create_all() crée déjà toutes les colonnes
+    from sqlalchemy import text
+
+    with engine.begin() as connexion:
+        for instruction in MIGRATIONS_LEGERES:
+            connexion.execute(text(instruction))
+
+
 def get_db():
     db = SessionLocal()
     try:

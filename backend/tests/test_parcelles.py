@@ -1,4 +1,4 @@
-﻿import os
+import os
 import uuid
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
@@ -104,14 +104,14 @@ def test_crud_complet_exploitations_parcelles_cultures():
 
         modification_culture = client.put(
             f"/cultures/{culture['id']}",
-            json={"espece": "Tomate", "date_semis": "2026-11-01T00:00:00"},
+            json={"espece": "Maïs", "date_semis": "2026-11-01T00:00:00"},
             headers=entetes,
         )
         assert modification_culture.status_code == 200
-        assert modification_culture.json()["espece"] == "Tomate"
+        assert modification_culture.json()["espece"] == "Maïs"
 
         fiche = client.get(f"/parcelles/{parcelle['id']}", headers=entetes)
-        assert fiche.json()["cultures"][0]["espece"] == "Tomate"
+        assert fiche.json()["cultures"][0]["espece"] == "Maïs"
 
         suppression_culture = client.delete(f"/cultures/{culture['id']}", headers=entetes)
         assert suppression_culture.status_code == 204
@@ -152,13 +152,14 @@ def test_validations_et_suppression_en_cascade():
         ).json()
         culture = client.post(
             f"/parcelles/{parcelle['id']}/cultures",
-            json={"espece": "Manioc"},
+            json={"espece": "Maïs"},
             headers=entetes,
         )
         assert culture.status_code == 201
         client.post(
             "/humidite/mesures",
             json={"parcelle_id": parcelle["id"], "humidite": 22},
+            headers=entetes,
         )
 
         suppression = client.delete(f"/exploitations/{exploitation['id']}", headers=entetes)

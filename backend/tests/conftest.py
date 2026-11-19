@@ -6,3 +6,4 @@ os.environ["SEVIA_TESTS"] = "1"
 os.environ["DATABASE_URL"] = "sqlite://"
 os.environ.setdefault("MQTT_ENABLED", "false")
 os.environ.setdefault("YOLO_ENABLED", "false")
+os.environ["SECRET_KEY"] = "cle-de-test-uniquement"   # jamais la clé publique par défaut

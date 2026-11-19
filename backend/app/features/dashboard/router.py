@@ -8,8 +8,10 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 from ...core.database import get_db
 from ...core.security import current_user
-from ..parcelles.models import Parcelle, Culture
+from ..parcelles.models import Exploitation, Parcelle, Culture
 from ..equipements.models import Equipement
+from ..equipements.router import statut_en_ligne
+from ..alertes.service import seuils_humidite
 from ..humidite.models import Mesure, Irrigation
 from ..camera.models import Comptage
 from ..fertilisation.models import Apport
@@ -27,8 +29,13 @@ def _date_debut(periode: str):
     return None
 
 
-def _parcelles_filtrees(db: Session, parcelle: str | None, culture: str | None):
-    q = db.query(Parcelle)
+def _ids_exploitations(db: Session, user) -> list[int]:
+    return [e.id for e in db.query(Exploitation.id).filter(Exploitation.user_id == user.id).all()]
+
+
+def _parcelles_filtrees(db: Session, user, parcelle: str | None, culture: str | None):
+    # Uniquement les parcelles de l'utilisateur connecté
+    q = db.query(Parcelle).filter(Parcelle.exploitation_id.in_(_ids_exploitations(db, user)))
     if parcelle and parcelle != "Toutes les parcelles":
         q = q.filter(Parcelle.nom == parcelle)
     if culture and culture != "Toutes les cultures":
@@ -53,7 +60,7 @@ def indicateurs(
     user=Depends(current_user),
 ):
     date_min = _date_debut(periode)
-    parcelles_obj, p_ids = _parcelles_filtrees(db, parcelle, culture)
+    parcelles_obj, p_ids = _parcelles_filtrees(db, user, parcelle, culture)
 
     if not p_ids:
         return {
@@ -106,8 +113,7 @@ def indicateurs(
         litres_p = sum(_litres_irrigation(irr) for irr in liste_irrigations if irr.parcelle_id == p.id)
         eau_p_m3 = round(litres_p / 1000.0, 2)
 
-        seuil_min = getattr(p, "seuil_humidite_min", None) or 30.0
-        seuil_max = getattr(p, "seuil_humidite_max", None) or 65.0
+        seuil_min, seuil_max = seuils_humidite(p)
 
         if hum_p < seuil_min:
             statut = "Irrigation"
@@ -142,8 +148,12 @@ def indicateurs(
     ]
 
     # 4. Équipements en ligne
-    total_eq = db.query(func.count(Equipement.id)).scalar() or 0
-    en_ligne_eq = db.query(func.count(Equipement.id)).filter(Equipement.en_ligne.is_(True)).scalar() or 0
+    # Équipements de l'utilisateur, statut calculé comme sur la page Équipements
+    equipements_user = (
+        db.query(Equipement).filter(Equipement.exploitation_id.in_(_ids_exploitations(db, user))).all()
+    )
+    total_eq = len(equipements_user)
+    en_ligne_eq = sum(1 for e in equipements_user if statut_en_ligne(e))
 
     # 5. Courbes d'évolution (Humidité MQTT & Eau apportée en m³)
     q_courbe = db.query(Mesure).filter(Mesure.parcelle_id.in_(p_ids))

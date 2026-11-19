@@ -27,6 +27,16 @@ class ProfilIn(BaseModel):
     telephone: str = Field(default="", max_length=40)
     role: str = Field(default="Exploitant agricole", max_length=80)
     langue: str = Field(default="fr", max_length=10)
+    # Adresse des alertes : "" ou absente = aucune ; envoyée seule, elle ne touche pas aux autres champs
+    email_alertes: EmailStr | None = None
+
+    @field_validator("email_alertes", mode="before")
+    @classmethod
+    def email_vide(cls, valeur):
+        if valeur is None:
+            return None
+        valeur = str(valeur).strip()
+        return valeur or None
 
     @field_validator("nom", "telephone", "role", "langue")
     @classmethod

@@ -41,7 +41,7 @@ class Parcelle(Base):
 
 
 class Culture(Base):
-    """Une culture plantée sur une parcelle (ex: Maïs, Tomate), avec sa propre
+    """Une culture plantée sur une parcelle (ex : Maïs), avec sa propre
     date de semis — une parcelle peut avoir plusieurs cultures dans le temps."""
 
     __tablename__ = "cultures"

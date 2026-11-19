@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import {
   lireApercuHumidite,
@@ -6,8 +6,22 @@ import {
   sauvegarderSeuilsParcelle,
 } from './api.js'
 import './Humidite.css'
+import { ecouter, ecouterEtat, utiliserTempsReel } from '../../services/tempsReel.js'
 
 const LIGNES_PAR_PAGE = 5
+// Le capteur publie toutes les 30 s : sans mesure depuis 2 min, il est considéré comme inactif
+const DELAI_CAPTEUR_INACTIF_MS = 2 * 60 * 1000
+
+function dateUtc(iso) {
+  if (!iso) return null
+  const d = new Date(iso.endsWith('Z') ? iso : `${iso}Z`)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+function capteurActif(parcelle, maintenant) {
+  const derniere = dateUtc(parcelle?.derniere_mesure_le)
+  return Boolean(derniere) && maintenant - derniere.getTime() < DELAI_CAPTEUR_INACTIF_MS
+}
 
 function formaterDate(isoString) {
   if (!isoString) return '—'
@@ -57,6 +71,11 @@ export default function Humidite() {
   const [chargement, setChargement] = useState(true)
   const [erreur, setErreur] = useState('')
   const [succes, setSucces] = useState('')
+  // Temps réel : état du flux et dernière alerte de seuil reçue
+  const [etatDirect, setEtatDirect] = useState('connexion')   // connexion | direct | reconnexion | deconnecte
+  const [alerteDirect, setAlerteDirect] = useState(null)
+  const [maintenant, setMaintenant] = useState(() => Date.now())
+  const rechargementDiffere = useRef(null)
 
   const rafraichirApercu = useCallback(async (initial = false) => {
     try {
@@ -86,11 +105,56 @@ export default function Humidite() {
     }
   }, [])
 
-  // Chargement initial + actualisation MQTT toutes les 5 secondes
+  // Chargement initial, puis mise à jour INSTANTANÉE à chaque nouvelle mesure reçue par le serveur
+  // (flux temps réel). Une actualisation lente reste en secours si le flux est coupé.
   useEffect(() => {
     rafraichirApercu(true)
-    const timer = setInterval(() => rafraichirApercu(false), 5000)
-    return () => clearInterval(timer)
+    const libererDirect = utiliserTempsReel()
+    const desabonnerEtat = ecouterEtat(setEtatDirect)
+    const desabonner = ecouter((mesure) => {
+        if (mesure.type !== 'mesure') return   // les alertes sont affichées par le popup global
+        // a) affichage immédiat de la nouvelle valeur (jauge, carte, courbe)
+        setMaintenant(Date.now())
+        setParcelles((liste) =>
+          liste.map((p) =>
+            p.id === mesure.parcelle_id
+              ? {
+                  ...p,
+                  humidite_actuelle: mesure.valeur,
+                  derniere_mesure_le: mesure.date,
+                  courbe_24h: [
+                    ...(p.courbe_24h || []).filter((m) => m.id !== mesure.mesure_id),
+                    { id: mesure.mesure_id, heure: mesure.date.slice(11, 16), horodatage: mesure.date, valeur: mesure.valeur },
+                  ],
+                }
+              : p,
+          ),
+        )
+        // b) recommandations et bilan recalculés par le serveur, en arrière-plan (regroupé si rafale)
+        window.clearTimeout(rechargementDiffere.current)
+        rechargementDiffere.current = window.setTimeout(() => rafraichirApercu(false), 1500)
+        if (mesure.hors_seuil) {
+          setAlerteDirect({
+            ...mesure,
+            texte:
+              mesure.hors_seuil === 'bas'
+                ? `Sol trop sec sur ${mesure.parcelle} : ${mesure.valeur} % (seuil bas ${mesure.seuil_min} %). Arrosage recommandé.`
+                : `Excès d'eau sur ${mesure.parcelle} : ${mesure.valeur} % (seuil haut ${mesure.seuil_max} %). Suspendre l'arrosage.`,
+          })
+        } else {
+          setAlerteDirect((actuelle) => (actuelle?.parcelle_id === mesure.parcelle_id ? null : actuelle))
+        }
+    })
+    const secours = setInterval(() => rafraichirApercu(false), 60000)
+    const horloge = setInterval(() => setMaintenant(Date.now()), 10000)   // état actif / inactif des capteurs
+    return () => {
+      desabonner()
+      desabonnerEtat()
+      libererDirect()
+      clearInterval(secours)
+      clearInterval(horloge)
+      window.clearTimeout(rechargementDiffere.current)
+    }
   }, [rafraichirApercu])
 
   const selectionnerParcelle = (p) => {
@@ -251,7 +315,18 @@ export default function Humidite() {
       <header className="hum-header">
         <div>
           <h1 className="hum-title">Humidité et irrigation</h1>
-          <p className="hum-subtitle">Relevés capteurs MQTT, recommandations hydriques et suivi des arrosages terrain</p>
+          <p className="hum-subtitle">
+            Relevés capteurs MQTT, recommandations hydriques et suivi des arrosages terrain
+            <span className={`hum-direct hum-direct-${etatDirect}`} role="status">
+              {etatDirect === 'direct'
+                ? 'En direct'
+                : etatDirect === 'reconnexion'
+                  ? 'Reconnexion…'
+                  : etatDirect === 'deconnecte'
+                    ? 'Session expirée'
+                    : 'Connexion…'}
+            </span>
+          </p>
         </div>
 
         <div className="hum-header-actions">
@@ -292,6 +367,32 @@ export default function Humidite() {
         </div>
       </header>
 
+      {!chargement && parcelles.length > 0 && !parcelles.some((p) => capteurActif(p, maintenant)) && (
+        <div className="hum-capteur-inactif" role="status">
+          <strong>Aucun capteur n&apos;est actif.</strong>{' '}
+          Aucune mesure reçue depuis plus de 2 minutes : vérifiez que le capteur est alimenté, connecté
+          au Wi-Fi et au broker MQTT.
+          {parcelles.some((p) => p.derniere_mesure_le) &&
+            ` Dernière mesure reçue : ${formaterDate(
+              parcelles
+                .map((p) => p.derniere_mesure_le)
+                .filter(Boolean)
+                .sort()
+                .at(-1),
+            )}.`}
+        </div>
+      )}
+      {alerteDirect && (
+        <div
+          className={`hum-alerte-direct ${alerteDirect.hors_seuil === 'bas' ? 'sec' : 'humide'}`}
+          role="alert"
+        >
+          <span>{alerteDirect.texte}</span>
+          <button type="button" onClick={() => setAlerteDirect(null)} aria-label="Fermer l'alerte">
+            ×
+          </button>
+        </div>
+      )}
       {erreur && <div className="hum-banner-error">{erreur}</div>}
       {succes && <div className="hum-banner-info">{succes}</div>}
       {chargement && <div className="hum-banner-info">Chargement des capteurs MQTT...</div>}
@@ -357,9 +458,11 @@ export default function Humidite() {
           </div>
 
           <div className="hum-gauge-footer">
-            <span className="hum-live-badge">
+            <span className={`hum-live-badge ${capteurActif(parcelleActive, maintenant) ? '' : 'inactif'}`}>
               <span className="hum-live-dot" />
-              Flux MQTT actif
+              {capteurActif(parcelleActive, maintenant)
+                ? `Capteur actif · ${formaterDate(parcelleActive?.derniere_mesure_le)}`
+                : 'Aucun capteur actif'}
             </span>
             <span className="hum-target-text">
               Plage cible {seuilMin} à {seuilMax} %

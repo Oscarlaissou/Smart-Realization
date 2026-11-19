@@ -1,4 +1,4 @@
-﻿import os
+import os
 import uuid
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///./test.db")
@@ -37,10 +37,11 @@ def test_regles_alertes_et_compteur():
         mesure = client.post(
             "/humidite/mesures",
             json={"parcelle_id": parcelle["id"], "humidite": 22},
+            headers=entetes,
         )
         assert mesure.status_code == 201
         # Une seconde mesure basse ne doit pas dupliquer l'alerte.
-        client.post("/humidite/mesures", json={"parcelle_id": parcelle["id"], "humidite": 21})
+        client.post("/humidite/mesures", json={"parcelle_id": parcelle["id"], "humidite": 21}, headers=entetes)
 
         alertes = client.get("/alertes", headers=entetes)
         assert alertes.status_code == 200, alertes.text
@@ -72,7 +73,7 @@ def test_email_de_test_sans_smtp(monkeypatch):
         entetes, _ = _utilisateur(client)
         reponse = client.post("/alertes/test-email", headers=entetes)
         assert reponse.status_code == 400
-        assert "SMTP" in reponse.json()["detail"]
+        assert reponse.json()["detail"] == "Problème lors de l'envoi du mail."
 
 
 def test_capteur_hors_service_et_preferences():
@@ -95,6 +96,7 @@ def test_capteur_hors_service_et_preferences():
         client.post(
             "/humidite/mesures",
             json={"parcelle_id": parcelle["id"], "humidite": 20},
+            headers=entetes,
         )
 
         verification = client.post("/alertes/verifier", headers=entetes)

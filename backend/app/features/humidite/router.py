@@ -1,12 +1,19 @@
+import asyncio
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
-from ...core.database import get_db
-from ...core.security import current_user
+from ...core import temps_reel
+from ...core.database import SessionLocal, get_db
+from ...core.security import bearer_scheme, current_user
 from ..auth.models import User
 from ..parcelles.models import Parcelle, Exploitation
 from .models import MesureHumidite, ArrosageManuel
+from ..alertes.service import seuils_humidite
+from ...core.acces import parcelle_de, parcelles_de
+from .mesures import enregistrer_mesure
 
 router = APIRouter(prefix="/humidite", tags=["Humidité & Irrigation"])
 
@@ -129,13 +136,8 @@ def _calculer_recommandation(
 
 @router.get("/apercu")
 def apercu_humidite(db: Session = Depends(get_db), user: User = Depends(current_user)):
-    exploitations = db.query(Exploitation).filter(Exploitation.user_id == user.id).all()
-    exp_ids = [e.id for e in exploitations]
-    parcelles = db.query(Parcelle).filter(Parcelle.exploitation_id.in_(exp_ids)).all() if exp_ids else []
-
-    # Repli sur toutes les parcelles si le compte de test n'est pas lié à une exploitation
-    if not parcelles:
-        parcelles = db.query(Parcelle).all()
+    # Uniquement les parcelles de l'utilisateur (plus de repli sur toutes les parcelles de la base)
+    parcelles = parcelles_de(db, user)
 
     depuis_24h = datetime.utcnow() - timedelta(hours=24)
     depuis_7j = datetime.utcnow() - timedelta(days=7)
@@ -156,8 +158,7 @@ def apercu_humidite(db: Session = Depends(get_db), user: User = Depends(current_
         )
 
         val = derniere.valeur if derniere else None
-        min_s = getattr(p, "seuil_humidite_min", 30.0) or 30.0
-        max_s = getattr(p, "seuil_humidite_max", 65.0) or 65.0
+        min_s, max_s = seuils_humidite(p)
         surf = getattr(p, "surface_m2", None) or ((getattr(p, "surface_ha", 0) or 0) * 10000) or 100.0
 
         cultures_rel = getattr(p, "cultures", None)
@@ -245,6 +246,7 @@ def apercu_humidite(db: Session = Depends(get_db), user: User = Depends(current_
 
 @router.post("/arrosages", status_code=201)
 def declarer_arrosage(donnees: ArrosageIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    parcelle_de(db, donnees.parcelle_id, user)
     derniere = (
         db.query(MesureHumidite)
         .filter(MesureHumidite.parcelle_id == donnees.parcelle_id)
@@ -268,9 +270,7 @@ def declarer_arrosage(donnees: ArrosageIn, db: Session = Depends(get_db), user: 
 
 @router.patch("/parcelles/{parcelle_id}/seuils")
 def modifier_seuils(parcelle_id: int, donnees: SeuilsIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
-    parcelle = db.query(Parcelle).filter(Parcelle.id == parcelle_id).first()
-    if not parcelle:
-        raise HTTPException(404, "Parcelle introuvable.")
+    parcelle = parcelle_de(db, parcelle_id, user)
     if donnees.seuil_humidite_min >= donnees.seuil_humidite_max:
         raise HTTPException(400, "Le seuil minimal doit être inférieur au seuil maximal.")
 
@@ -278,3 +278,61 @@ def modifier_seuils(parcelle_id: int, donnees: SeuilsIn, db: Session = Depends(g
     parcelle.seuil_humidite_max = donnees.seuil_humidite_max
     db.commit()
     return {"message": "Seuils mis à jour."}
+
+# ---------------------------------------------------------------------------
+# Mesures en temps réel
+# ---------------------------------------------------------------------------
+class MesureIn(BaseModel):
+    parcelle_id: int
+    humidite: float = Field(ge=0, le=100)
+
+
+@router.post("/mesures", status_code=201)
+def recevoir_mesure(donnees: MesureIn, db: Session = Depends(get_db), user: User = Depends(current_user)):
+    """Envoi d'une mesure par l'API (test sans capteur, passerelle). Même traitement que MQTT :
+    enregistrement, alertes de seuil haut/bas et diffusion immédiate aux pages ouvertes."""
+    parcelle = parcelle_de(db, donnees.parcelle_id, user)
+    return enregistrer_mesure(db, parcelle, donnees.humidite)
+
+
+@router.get("/flux")
+async def flux_mesures(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+):
+    """Flux Server-Sent Events : chaque nouvelle mesure d'une parcelle de l'utilisateur est poussée
+    immédiatement (événement « mesure »), avec l'alerte éventuelle. Un commentaire « ping » part
+    toutes les 15 s pour garder la connexion ouverte.
+
+    Pas de Depends(get_db) ici : la session serait gardée ouverte pendant toute la durée du flux."""
+    db = SessionLocal()
+    try:
+        user_id = current_user(credentials, db).id
+    finally:
+        db.close()
+
+    abonne = temps_reel.abonner(user_id)
+
+    async def evenements():
+        try:
+            yield "retry: 3000\n\n"
+            silence = 0
+            # Vérifié chaque seconde : page fermée ? serveur en cours d'arrêt (Ctrl+C, --reload) ?
+            while not temps_reel.ARRET.is_set() and not await request.is_disconnected():
+                try:
+                    message = await asyncio.wait_for(abonne.file.get(), timeout=1)
+                    silence = 0
+                    yield f"event: mesure\ndata: {message}\n\n"
+                except asyncio.TimeoutError:
+                    silence += 1
+                    if silence >= 15:          # garde la connexion ouverte (proxys, navigateurs)
+                        silence = 0
+                        yield ": ping\n\n"
+        finally:
+            temps_reel.desabonner(abonne)
+
+    return StreamingResponse(
+        evenements(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

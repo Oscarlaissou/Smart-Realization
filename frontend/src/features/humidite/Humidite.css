@@ -677,3 +677,80 @@
   .hum-btn-icon-del:hover {
     background: #FDE8E4;
   }
+
+/* ---------- Temps réel ---------- */
+.hum-direct {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 10px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  vertical-align: middle;
+  background: #EEF2EF;
+  color: #5B6B63;
+}
+
+.hum-direct::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.hum-direct-direct { background: #E3F3EA; color: #14683F; }
+.hum-direct-direct::before { animation: hum-pulse 1.6s ease-in-out infinite; }
+.hum-direct-reconnexion { background: #FFF4E0; color: #8A5A00; }
+.hum-direct-deconnecte { background: #FDECEC; color: #A12A2A; }
+
+@keyframes hum-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hum-direct-direct::before { animation: none; }
+}
+
+.hum-alerte-direct {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.hum-alerte-direct.sec { background: #FDECEC; color: #8F1F1F; border: 1px solid #F3C2C2; }
+.hum-alerte-direct.humide { background: #E8F1FB; color: #164C85; border: 1px solid #BFD6F0; }
+
+.hum-alerte-direct button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+
+/* ---------- État du capteur ---------- */
+.hum-live-badge.inactif { background: #F1F3F2; color: #5B6B63; }
+.hum-live-badge.inactif .hum-live-dot { background: #A3AEA8; animation: none; box-shadow: none; }
+
+.hum-capteur-inactif {
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border-radius: 12px;
+  background: #FFF4E0;
+  border: 1px solid #F2D6A2;
+  color: #6B4700;
+  font-size: 14px;
+  line-height: 1.5;
+}

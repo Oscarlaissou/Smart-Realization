@@ -8,7 +8,13 @@ export const getDernieresDonnees = (parcelleId) => api(`/fertilisation/donnees/$
 export const saisirDonnees = (data) =>
   api("/fertilisation/donnees", { method: "POST", body: JSON.stringify(data) });
 
-export const getDose = (parcelleId) => api(`/fertilisation/dose/${parcelleId}`);
+export const getDose = (parcelleId, { surfaceHa, nbPlants } = {}) => {
+  const params = new URLSearchParams();
+  if (surfaceHa) params.set("surface_ha", surfaceHa);
+  if (nbPlants) params.set("nb_plants", nbPlants);
+  const qs = params.toString() ? `?${params.toString()}` : "";
+  return api(`/fertilisation/dose/${parcelleId}${qs}`);
+};
 
 export const getApports = (parcelleId, realise) => {
   const params = new URLSearchParams();

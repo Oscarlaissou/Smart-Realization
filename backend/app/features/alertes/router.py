@@ -1,4 +1,5 @@
 """CONTRÔLEUR – Alertes, compteur et préférences de notification."""
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
@@ -9,6 +10,8 @@ from . import service
 from .models import Alerte, PreferenceAlerte
 from .schemas import AlerteOut, CompteurOut, PreferenceIn, PreferenceOut
 from ..parcelles.models import Exploitation, Parcelle
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/alertes", tags=["Alertes"])
 
@@ -135,28 +138,24 @@ def lire_preferences(db: Session = Depends(get_db), user=Depends(current_user)):
 @router.post("/test-email")
 def tester_email(user=Depends(current_user)):
     if not settings.SMTP_HOST:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "SMTP non configuré : renseignez SMTP_HOST dans backend/.env puis redémarrez l'API.",
-        )
-    if not user.email:
+        logger.error("Test e-mail impossible : SMTP_HOST absent de backend/.env")
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Problème lors de l'envoi du mail.")
+    destinataire = user.email_alertes or user.email
+    if not destinataire:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             "Aucune adresse e-mail associée à votre compte.",
         )
-    envoye = service.envoyer_email(
-        user.email,
+    envoye, raison = service.envoyer_email_detail(
+        destinataire,
         "Test Sevia · Notifications e-mail",
         "Ceci est un e-mail de test envoyé depuis Sevia. "
         "Si vous le recevez, la configuration SMTP est correcte.",
     )
     if not envoye:
-        raise HTTPException(
-            status.HTTP_502_BAD_GATEWAY,
-            "Échec de l'envoi. Vérifiez SMTP_HOST, SMTP_PORT, SMTP_USER, "
-            "SMTP_PASSWORD et la console de l'API.",
-        )
-    return {"message": f"E-mail de test envoyé à {user.email}."}
+        # La raison détaillée reste dans le journal du serveur (voir service.envoyer_email_detail)
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Problème lors de l'envoi du mail.")
+    return {"message": f"E-mail de test envoyé à {destinataire}."}
 
 
 @router.put("/preferences", response_model=list[PreferenceOut])

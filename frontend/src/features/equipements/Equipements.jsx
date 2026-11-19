@@ -8,6 +8,8 @@
 // "derniere_donnee".
 
 import { useEffect, useState, useCallback } from "react";
+import { useTranslation } from "react-i18next";
+import Entete from "../../components/Entete.jsx";
 import {
   getEquipements,
   createEquipement,
@@ -40,6 +42,8 @@ function depuis(dateIso) {
 const FORM_VIDE = { code: "", type: "capteur", parcelle_id: "" };
 
 export default function Equipements() {
+  const { t } = useTranslation();
+  const [recherche, setRecherche] = useState("");
   const [equipements, setEquipements] = useState([]);
   const [parcelles, setParcelles] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -77,8 +81,9 @@ export default function Equipements() {
     return p ? `${p.nom} (ID ${p.id})` : "—";
   };
 
-  const listeFiltree =
-    filtre === "tous" ? equipements : equipements.filter((e) => e.type === filtre);
+  const terme = recherche.trim().toLowerCase();
+  const listeFiltree = (filtre === "tous" ? equipements : equipements.filter((e) => e.type === filtre))
+    .filter((e) => !terme || [e.code, e.type, nomParcelle(e.parcelle_id)].join(" ").toLowerCase().includes(terme));
 
   const nbTotal = equipements.length;
   const nbEnLigne = equipements.filter((e) => e.en_ligne).length;
@@ -142,7 +147,14 @@ export default function Equipements() {
   }
 
   return (
-    <div style={{ padding: "0 40px 40px", display: "flex", flexDirection: "column", gap: 20 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+      <Entete
+        titre={t("equipements.titre")}
+        sousTitre={t("equipements.sousTitre", { enLigne: nbEnLigne, total: nbTotal })}
+        recherche={recherche}
+        onRecherche={setRecherche}
+        placeholderRecherche={t("common.rechercherEquipement")}
+      />
       {error && <div className="conn-banner conn-erreur">Erreur : {error}</div>}
 
       <section

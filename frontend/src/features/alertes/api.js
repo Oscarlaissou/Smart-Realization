@@ -7,6 +7,7 @@ export const listerAlertes = (filtres = {}) => {
   }
   if (filtres.niveau) params.append('niveau', filtres.niveau)
   if (filtres.nonLues) params.append('non_lues', 'true')
+  params.append('limite', String(filtres.limite ?? 500))   // maximum accepté par l'API
   const requete = params.toString()
   return api(requete ? `/alertes?${requete}` : '/alertes')
 }

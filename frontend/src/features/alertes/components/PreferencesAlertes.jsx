@@ -74,7 +74,14 @@ export default function PreferencesAlertes({
         </div>
         <div className="champ">
           <label htmlFor="preferences-email">{t('alertes.emailNotifications')}</label>
-          <input id="preferences-email" type="email" value={profil.email || ''} readOnly />
+          <input
+            id="preferences-email"
+            type="email"
+            value={profil.email_alertes || ''}
+            placeholder={profil.email || 'nom@exemple.com'}
+            onChange={(evenement) => onProfilChange('email_alertes', evenement.target.value)}
+          />
+          <small className="texte-discret">{t('alertes.emailAlertesAide')}</small>
         </div>
       </div>
 

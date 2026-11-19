@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     SUPABASE_ANON_KEY: str = ""
     SECRET_KEY: str = "sevia_cle_secrete_supabase_2026_fixe"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440
+    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173"
     # Supabase Storage (images de la caméra)
     SUPABASE_SERVICE_KEY: str | None = None
     SUPABASE_BUCKET: str = "camera"
@@ -20,7 +21,7 @@ class Settings(BaseSettings):
     MQTT_PASSWORD: str | None = None
 
     # Notifications par e-mail (smtplib)
-    NOTIFICATIONS_EMAIL_ACTIVES: bool = False
+    NOTIFICATIONS_EMAIL_ACTIVES: bool = True    # envoi dès que SMTP_HOST est renseigné
     SMTP_HOST: str = ""
     SMTP_PORT: int = 587
     SMTP_USE_TLS: bool = True

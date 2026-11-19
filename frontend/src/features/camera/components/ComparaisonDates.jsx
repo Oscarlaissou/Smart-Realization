@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { dateHeure, nombre } from '../format.js'
 import ImageParcelle from './ImageParcelle.jsx'
 
-function ChoixImage({ id, label, comptages, valeur, onChange }) {
+function ChoixImage({ id, label, comptages, valeur, onChange, nomParcelle }) {
   const comptage = comptages.find((c) => String(c.id) === String(valeur))
   const src = comptage?.image_detections_url || comptage?.image_url
 
@@ -18,14 +18,14 @@ function ChoixImage({ id, label, comptages, valeur, onChange }) {
           ))}
         </select>
       </div>
-      <ImageParcelle src={src} alt={`Image de la parcelle, ${label}`} />
+      <ImageParcelle src={src} alt={`Image de la parcelle ${nomParcelle || ''}, ${label}`} parcelle={nomParcelle} />
       <span className="cam-legende">{comptage ? `${nombre(comptage.nb_plants)} plants` : ''}</span>
     </div>
   )
 }
 
 // Deux images de la même parcelle à deux dates, avec l'écart de plants
-export default function ComparaisonDates({ comptages }) {
+export default function ComparaisonDates({ comptages, nomParcelle }) {
   const [idA, setIdA] = useState('')
   const [idB, setIdB] = useState('')
 
@@ -51,8 +51,8 @@ export default function ComparaisonDates({ comptages }) {
   return (
     <>
       <div className="cam-compare-grid">
-        <ChoixImage id="d1" label="Date A" comptages={comptages} valeur={idA} onChange={setIdA} />
-        <ChoixImage id="d2" label="Date B" comptages={comptages} valeur={idB} onChange={setIdB} />
+        <ChoixImage id="d1" label="Date A" comptages={comptages} valeur={idA} onChange={setIdA} nomParcelle={nomParcelle} />
+        <ChoixImage id="d2" label="Date B" comptages={comptages} valeur={idB} onChange={setIdB} nomParcelle={nomParcelle} />
       </div>
 
       {ecart !== null && (

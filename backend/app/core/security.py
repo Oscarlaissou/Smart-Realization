@@ -1,3 +1,4 @@
+import logging
 import os
 from datetime import datetime, timedelta
 from fastapi import Depends, HTTPException, status
@@ -8,9 +9,20 @@ from sqlalchemy.orm import Session
 from .database import get_db
 from ..features.auth.models import User
 
-SECRET_KEY = os.getenv("SECRET_KEY", "sevia_cle_secrete_supabase_2026_fixe")
+from .config import settings
+
+# Clé lue dans backend/.env via settings (os.getenv ne voit PAS le .env : la clé par défaut,
+# publique car écrite dans le dépôt, était utilisée et permettait de forger des jetons).
+SECRET_KEY = settings.SECRET_KEY
 ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
+ACCESS_TOKEN_EXPIRE_MINUTES = settings.ACCESS_TOKEN_EXPIRE_MINUTES
+
+_CLES_PUBLIQUES = {"sevia_cle_secrete_supabase_2026_fixe", "changez-moi", ""}
+if SECRET_KEY in _CLES_PUBLIQUES and os.getenv("SEVIA_TESTS") != "1":
+    logging.getLogger(__name__).warning(
+        "SECRET_KEY n'est pas définie dans backend/.env : les jetons sont signés avec une clé publique. "
+        "Ajouter une valeur secrète longue (ex. python -c \"import secrets; print(secrets.token_urlsafe(48))\")."
+    )
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 bearer_scheme = HTTPBearer(auto_error=False)

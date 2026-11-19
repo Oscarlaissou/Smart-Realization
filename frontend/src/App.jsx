@@ -10,6 +10,9 @@ import Humidite from './features/humidite/Humidite.jsx'
 import Fertilisation from './features/fertilisation/Fertilisation.jsx'
 import Camera from './features/camera/Camera.jsx'
 import Alertes from './features/alertes/Alertes.jsx'
+import { deconnexion as fermerSession } from './services/api.js'
+import { couperTempsReel } from './services/tempsReel.js'
+import AlertesDirect from './components/AlertesDirect.jsx'
 import Parametres from './features/parametres/Parametres.jsx'
 
 const ICONES = {
@@ -34,7 +37,8 @@ function Espace({ children }) {
   if (!localStorage.getItem('token')) return <Navigate to="/connexion" />
 
   const deconnexion = () => {
-    localStorage.removeItem('token')
+    fermerSession()   // efface le jeton ET le profil du compte (rien ne reste pour le suivant)
+    couperTempsReel()
     navigate('/connexion')
   }
 
@@ -143,6 +147,7 @@ function Espace({ children }) {
       <main id="contenu-principal" tabIndex="-1">
         {children}
       </main>
+      <AlertesDirect />
     </div>
   )
 }
