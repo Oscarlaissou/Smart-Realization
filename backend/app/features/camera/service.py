@@ -53,9 +53,12 @@ def _charger_modele():
             ) from e
         local = DOSSIER_MODELES / settings.YOLO_MODEL
         if not local.is_file():
-            log.warning("%s absent : lancer backend/training/entrainer.py. "
-                        "Repli sur le téléchargement ultralytics.", local)
-        _modele = YOLO(str(local) if local.is_file() else settings.YOLO_MODEL)
+            # Pas de repli silencieux sur un modèle générique : il ne sait pas compter le maïs.
+            raise RuntimeError(
+                f"Modèle de comptage introuvable : {local}. Faire « git pull » (le fichier est "
+                "versionné) ou le régénérer avec backend/training/entrainer.py."
+            )
+        _modele = YOLO(str(local))
         log.info("Modèle YOLO chargé : %s", settings.YOLO_MODEL)
     return _modele
 

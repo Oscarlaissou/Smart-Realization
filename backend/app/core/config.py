@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     )
 
     # Comptage YOLO (F7.2) — modèle entraîné par backend/training/entrainer.py
-    YOLO_ENABLED: bool = False
+    YOLO_ENABLED: bool = True          # le modèle backend/models/mais.pt est versionné : actif par défaut
     YOLO_MODEL: str = "mais.pt"         # fichier dans backend/models/
     YOLO_CONFIANCE: float = 0.15        # meilleur compromis mesuré par training/evaluer_comptage.py
     YOLO_IMGSZ: int = 640               # taille des tuiles (identique à l'entraînement)
