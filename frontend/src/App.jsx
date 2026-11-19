@@ -10,6 +10,7 @@ import Humidite from './features/humidite/Humidite.jsx'
 import Fertilisation from './features/fertilisation/Fertilisation.jsx'
 import Camera from './features/camera/Camera.jsx'
 import Alertes from './features/alertes/Alertes.jsx'
+import Parametres from './features/parametres/Parametres.jsx'
 
 const ICONES = {
   dashboard: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z',
@@ -22,6 +23,7 @@ const ICONES = {
   camera:
     'M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3zM12 10a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
   alertes: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0',
+  parametres: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6',
 }
 
 function Espace({ children }) {
@@ -44,6 +46,7 @@ function Espace({ children }) {
     ['/fertilisation', t('nav.fertilisation'), ICONES.fertilisation],
     ['/camera', t('nav.camera'), ICONES.camera],
     ['/alertes', t('nav.alertes'), ICONES.alertes],
+    ['/parametres', t('nav.parametres'), ICONES.parametres],
   ]
 
   return (
@@ -203,6 +206,14 @@ export default function App() {
         element={
           <Espace>
             <Alertes />
+          </Espace>
+        }
+      />
+      <Route
+        path="/parametres"
+        element={
+          <Espace>
+            <Parametres />
           </Espace>
         }
       />

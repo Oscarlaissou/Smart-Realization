@@ -1,0 +1,90 @@
+.parametres-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.parametres-grille {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+  gap: 20px;
+  align-items: start;
+}
+
+.parametres-carte {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.parametres-formulaire {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.parametres-champ-large {
+  grid-column: 1 / -1;
+}
+
+.parametres-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.parametres-fieldset legend {
+  font-size: 13px;
+  font-weight: 500;
+  color: #5B6B63;
+  margin-bottom: 6px;
+}
+
+.parametres-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.parametres-option input[type='radio'],
+.parametres-option input[type='checkbox'] {
+  width: 18px;
+  height: 18px;
+  accent-color: #1F7A4D;
+  flex-shrink: 0;
+}
+
+.parametres-option .badge-statut {
+  margin-left: 4px;
+}
+
+.parametres-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.sauvegarde-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 14px;
+  color: #3C4A43;
+}
+
+.sauvegarde-info b {
+  font-size: 13px;
+  font-weight: 500;
+  color: #5B6B63;
+}
+
+@media (max-width: 760px) {
+  .parametres-grille {
+    grid-template-columns: 1fr;
+  }
+}

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, EmailStr, Field, field_validator
 from ...core.base_schema import ORM
 
@@ -44,3 +46,8 @@ class ProfilIn(BaseModel):
         if valeur not in {"fr", "en"}:
             raise ValueError("Langue prise en charge : fr ou en")
         return valeur
+
+
+class MotDePasseIn(BaseModel):
+    ancien_mot_de_passe: str
+    nouveau_mot_de_passe: str = Field(min_length=6, max_length=128)

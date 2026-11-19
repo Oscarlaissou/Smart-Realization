@@ -34,7 +34,7 @@ export default function Entete({
   alertesActives,
   children,
 }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [compteur, setCompteur] = useState(0)
   const profil = utilisateur || lireUtilisateurLocal()
   const nombreAlertes = alertesActives ?? compteur
@@ -97,6 +97,28 @@ export default function Entete({
         )}
 
         {children}
+
+        <Link
+          to="/parametres"
+          className="app-langue"
+          aria-label={`${t('common.langue')} : ${i18n.language === 'en' ? t('parametres.anglais') : t('parametres.francais')}`}
+        >
+          <svg
+            aria-hidden="true"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20" />
+          </svg>
+          {i18n.language === 'en' ? 'EN' : 'FR'}
+        </Link>
 
         <Link
           to="/alertes"
